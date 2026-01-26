@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { VOPIConfig, getRedirectUri } from '../config/vopi.config';
 import { User } from '../types/vopi.types';
 import { storage } from '../utils/storage';
+import { STORAGE_KEYS } from '../constants/storage';
 import { decodeJWTPayload } from '../utils/strings';
 
 // Ensure web browser auth sessions are dismissed
@@ -25,13 +26,6 @@ interface AuthContextType extends AuthState {
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
-
-// Secure storage keys
-const STORAGE_KEYS = {
-  ACCESS_TOKEN: 'vopi_access_token',
-  REFRESH_TOKEN: 'vopi_refresh_token',
-  USER: 'vopi_user',
-} as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -169,15 +163,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Store OAuth state temporarily
-      await storage.setItem('oauth_state', oauthState);
+      await storage.setItem(STORAGE_KEYS.OAUTH_STATE, oauthState);
       if (codeVerifier) {
-        await storage.setItem('oauth_code_verifier', codeVerifier);
+        await storage.setItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER, codeVerifier);
       }
-      await storage.setItem('oauth_provider', provider);
+      await storage.setItem(STORAGE_KEYS.OAUTH_PROVIDER, provider);
 
       // Verify storage worked
       if (__DEV__) {
-        const storedVerifier = await storage.getItem('oauth_code_verifier');
+        const storedVerifier = await storage.getItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER);
         console.log('[OAuth] Stored codeVerifier:', {
           stored: !!storedVerifier,
           length: storedVerifier?.length,
@@ -209,9 +203,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Retrieve stored OAuth state
-      const storedState = await storage.getItem('oauth_state');
-      const storedCodeVerifier = await storage.getItem('oauth_code_verifier');
-      const storedProvider = await storage.getItem('oauth_provider');
+      const storedState = await storage.getItem(STORAGE_KEYS.OAUTH_STATE);
+      const storedCodeVerifier = await storage.getItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER);
+      const storedProvider = await storage.getItem(STORAGE_KEYS.OAUTH_PROVIDER);
 
       // Debug logging for OAuth callback
       if (__DEV__) {
@@ -278,9 +272,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Clean up OAuth state
       await Promise.all([
-        storage.deleteItem('oauth_state'),
-        storage.deleteItem('oauth_code_verifier'),
-        storage.deleteItem('oauth_provider'),
+        storage.deleteItem(STORAGE_KEYS.OAUTH_STATE),
+        storage.deleteItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER),
+        storage.deleteItem(STORAGE_KEYS.OAUTH_PROVIDER),
       ]);
 
       safeSetState({
@@ -302,13 +296,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const refreshToken = await storage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 
       if (refreshToken) {
-        // Revoke token on server (fire and forget)
+        // Revoke token on server (fire and forget, but log errors in dev)
         fetch(`${VOPIConfig.apiUrl}/api/v1/auth/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refreshToken }),
-        }).catch(() => {
-          // Ignore logout errors
+        }).catch((error) => {
+          // Log logout errors in development for debugging
+          if (__DEV__) {
+            console.warn('[Auth] Logout request failed:', error.message);
+          }
         });
       }
     } finally {
@@ -326,8 +323,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const refreshAccessToken = async (): Promise<string | null> => {
-    // Prevent concurrent refresh requests
-    if (isRefreshing.current) {
+    // Prevent concurrent refresh requests - check both flag and promise
+    if (isRefreshing.current && refreshPromise.current) {
       return refreshPromise.current;
     }
 

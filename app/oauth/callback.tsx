@@ -4,7 +4,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import { VOPIConfig } from '../../src/config/vopi.config';
 import { storage } from '../../src/utils/storage';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/theme';
+import { STORAGE_KEYS } from '../../src/constants/storage';
+import { colors, spacing, fontSize, fontWeight } from '../../src/theme';
 
 /**
  * OAuth callback page for web
@@ -32,32 +33,46 @@ export default function OAuthCallbackScreen() {
       }
 
       // Retrieve stored OAuth state
-      const storedState = await storage.getItem('oauth_state');
-      const storedCodeVerifier = await storage.getItem('oauth_code_verifier');
-      const storedProvider = await storage.getItem('oauth_provider');
+      const storedState = await storage.getItem(STORAGE_KEYS.OAUTH_STATE);
+      const storedCodeVerifier = await storage.getItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER);
+      const storedProvider = await storage.getItem(STORAGE_KEYS.OAUTH_PROVIDER);
 
-      // Validate state
-      if (state !== storedState) {
-        setError('OAuth state mismatch - please try again');
+      // Validate state - must exist and match
+      if (!storedState || !state || state !== storedState) {
+        setError('OAuth state mismatch - CSRF protection failed. Please try again.');
         return;
       }
 
-      // Exchange code for tokens
+      // Validate provider exists
+      if (!storedProvider) {
+        setError('OAuth session expired - please try again');
+        return;
+      }
+
+      // Build callback request body
       const redirectUri = `${VOPIConfig.webUrl}/oauth/callback`;
+      const callbackBody: Record<string, unknown> = {
+        provider: storedProvider,
+        code,
+        redirectUri,
+        state: storedState,
+        platform: Platform.OS,
+        deviceInfo: {
+          deviceName: 'Web Browser',
+        },
+      };
+
+      // Include codeVerifier if available (for PKCE flow)
+      if (storedCodeVerifier) {
+        callbackBody.codeVerifier = storedCodeVerifier;
+        callbackBody.code_verifier = storedCodeVerifier; // Also send snake_case for backend compatibility
+      }
+
+      // Exchange code for tokens
       const callbackResponse = await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/oauth/callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: storedProvider,
-          code,
-          redirectUri,
-          state: storedState,
-          codeVerifier: storedCodeVerifier || undefined,
-          platform: Platform.OS,
-          deviceInfo: {
-            deviceName: 'Web Browser',
-          },
-        }),
+        body: JSON.stringify(callbackBody),
       });
 
       if (!callbackResponse.ok) {
@@ -69,16 +84,16 @@ export default function OAuthCallbackScreen() {
 
       // Store tokens and user
       await Promise.all([
-        storage.setItem('vopi_access_token', accessToken),
-        storage.setItem('vopi_refresh_token', refreshToken),
-        storage.setItem('vopi_user', JSON.stringify(user)),
+        storage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
+        storage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken),
+        storage.setItem(STORAGE_KEYS.USER, JSON.stringify(user)),
       ]);
 
       // Clean up OAuth state
       await Promise.all([
-        storage.deleteItem('oauth_state'),
-        storage.deleteItem('oauth_code_verifier'),
-        storage.deleteItem('oauth_provider'),
+        storage.deleteItem(STORAGE_KEYS.OAUTH_STATE),
+        storage.deleteItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER),
+        storage.deleteItem(STORAGE_KEYS.OAUTH_PROVIDER),
       ]);
 
       // Redirect to home - force page reload to update auth state

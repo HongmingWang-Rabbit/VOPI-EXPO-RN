@@ -13,9 +13,16 @@ export function UploadProgress({ state, onCancel }: UploadProgressProps) {
     return null;
   }
 
-  const getProgressValue = () => {
-    if (state.status === 'uploading') return state.progress;
-    if (state.status === 'processing') return state.progress / 100;
+  // Normalize progress to 0-1 range
+  const getProgressValue = (): number => {
+    if (state.status === 'uploading') {
+      // uploading progress is already 0-1
+      return state.progress;
+    }
+    if (state.status === 'processing') {
+      // processing progress is 0-100, normalize to 0-1
+      return state.progress / 100;
+    }
     return 0;
   };
 
@@ -38,15 +45,33 @@ export function UploadProgress({ state, onCancel }: UploadProgressProps) {
   const isActive = state.status === 'uploading' || state.status === 'processing';
   const progressPercent = Math.round(getProgressValue() * 100);
 
+  // Generate accessible progress description
+  const getAccessibleText = (): string => {
+    if (state.status === 'uploading') {
+      return `Upload progress: ${progressPercent}% complete`;
+    }
+    if (state.status === 'processing') {
+      return `Processing: ${state.step}, ${progressPercent}% complete`;
+    }
+    if (state.status === 'error') {
+      return `Error occurred: ${state.message}`;
+    }
+    if (state.status === 'cancelled') {
+      return 'Upload cancelled';
+    }
+    return '';
+  };
+
   return (
     <View
       style={styles.container}
       accessibilityRole="progressbar"
+      accessibilityLabel="Upload progress indicator"
       accessibilityValue={{
         min: 0,
         max: 100,
         now: progressPercent,
-        text: getStatusText(),
+        text: getAccessibleText(),
       }}
     >
       <Text style={styles.statusText}>{getStatusText()}</Text>

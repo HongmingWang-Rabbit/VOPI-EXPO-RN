@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system';
 import { apiClient } from './api.client';
+import { VOPIConfig } from '../config/vopi.config';
 import {
   PresignResponse,
   Job,
@@ -65,20 +66,33 @@ export const vopiService = {
     }
     const blob = new Blob([bytes], { type: contentType });
 
-    // Upload to S3
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': contentType,
-      },
-      body: blob,
-    });
+    // Upload to S3 with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), VOPIConfig.uploadTimeout);
 
-    if (!uploadResponse.ok) {
-      throw new Error(`Upload failed with status ${uploadResponse.status}`);
+    try {
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': contentType,
+        },
+        body: blob,
+        signal: controller.signal,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed with status ${uploadResponse.status}`);
+      }
+
+      onProgress?.(1);
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Upload timed out - please try again with a smaller file or better connection');
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    onProgress?.(1);
   },
 
   // Jobs

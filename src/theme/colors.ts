@@ -15,7 +15,7 @@ export const colors = {
   black: '#000000',
   text: '#1a1a1a',
   textSecondary: '#666666',
-  textTertiary: '#999999',
+  textTertiary: '#767676', // Improved contrast ratio (4.54:1 vs white) to meet WCAG AA
   border: '#EEEEEE',
   borderDark: '#DDDDDD',
   background: '#FFFFFF',

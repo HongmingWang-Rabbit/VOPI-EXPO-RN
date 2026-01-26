@@ -9,52 +9,61 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../theme';
+import { capitalizeFirst } from '../../utils/strings';
 
 interface ResultsGalleryProps {
   images: Record<string, Record<string, string>>;
   onImagePress?: (url: string) => void;
+  productName?: string;
 }
 
-export function ResultsGallery({ images, onImagePress }: ResultsGalleryProps) {
+export function ResultsGallery({ images, onImagePress, productName }: ResultsGalleryProps) {
   const { width: screenWidth } = useWindowDimensions();
   const imageSize = (screenWidth - 48) / 2;
 
   const variants = Object.keys(images);
+  const totalImages = variants.reduce((sum, v) => sum + Object.keys(images[v]).length, 0);
 
   if (variants.length === 0) {
     return (
-      <View style={styles.empty}>
+      <View style={styles.empty} accessibilityRole="text">
         <Text style={styles.emptyText}>No results available</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {variants.map((variant) => (
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      accessibilityLabel={`Product image gallery with ${totalImages} images in ${variants.length} categories`}
+    >
+      {variants.map((variant, variantIndex) => (
         <View key={variant} style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {variant.charAt(0).toUpperCase() + variant.slice(1)}
+          <Text style={styles.sectionTitle} accessibilityRole="header">
+            {capitalizeFirst(variant)}
           </Text>
 
-          <View style={styles.grid}>
-            {Object.entries(images[variant]).map(([version, url]) => (
+          <View style={styles.grid} accessibilityRole="list">
+            {Object.entries(images[variant]).map(([version, url], imageIndex) => (
               <TouchableOpacity
                 key={version}
                 style={[styles.imageContainer, { width: imageSize }]}
                 onPress={() => onImagePress?.(url)}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel={`View ${variant} ${version} image`}
+                accessibilityLabel={`${productName ? productName + ', ' : ''}${capitalizeFirst(variant)} style, ${capitalizeFirst(version)} version. Tap to view full size.`}
+                accessibilityHint="Opens the image in full screen"
               >
                 <Image
                   source={{ uri: url }}
                   style={[styles.image, { width: imageSize, height: imageSize }]}
                   resizeMode="cover"
-                  accessibilityLabel={`${variant} ${version} product image`}
+                  accessibilityLabel={`Product image: ${capitalizeFirst(variant)} ${capitalizeFirst(version)}`}
+                  accessibilityIgnoresInvertColors
                 />
                 <Text style={styles.versionLabel}>
-                  {version.charAt(0).toUpperCase() + version.slice(1)}
+                  {capitalizeFirst(version)}
                 </Text>
               </TouchableOpacity>
             ))}

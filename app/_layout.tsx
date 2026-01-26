@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,6 +7,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { apiClient } from '../src/services/api.client';
 import { WebContainer } from '../src/components/ui/WebContainer';
+import { ErrorBoundary } from '../src/components/ui/ErrorBoundary';
+import { colors } from '../src/theme';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -39,7 +42,11 @@ function RootLayoutNav() {
   }, [isLoading]);
 
   if (isLoading) {
-    return null;
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
   }
 
   return (
@@ -57,12 +64,23 @@ function RootLayoutNav() {
   );
 }
 
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+  },
+});
+
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RootLayoutNav />
-      </AuthProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <RootLayoutNav />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

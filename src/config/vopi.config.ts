@@ -1,26 +1,25 @@
 import { Platform } from 'react-native';
+import { env } from './env';
 
 export const VOPIConfig = {
-  // Production API
-  apiUrl: 'https://api.vopi.24rabbit.com',
+  // API URLs from environment
+  apiUrl: env.apiUrl,
+  webUrl: env.webUrl,
 
   // OAuth scheme (must match app.json "scheme") - for mobile
-  scheme: 'vopi',
-
-  // Web URL for OAuth redirect
-  webUrl: 'https://vopi.24rabbit.com',
+  scheme: env.scheme,
 
   // Google OAuth iOS client ID (reversed for redirect URI)
-  googleIOSClientId: '613369473822-pi7ut8sau3oh8i942gi2chbnkf9s069r.apps.googleusercontent.com',
-  googleIOSReversedClientId: 'com.googleusercontent.apps.613369473822-pi7ut8sau3oh8i942gi2chbnkf9s069r',
+  googleIOSClientId: env.googleIOSClientId,
+  googleIOSReversedClientId: env.googleIOSReversedClientId,
 
   // Timeouts
-  uploadTimeout: 300000, // 5 minutes
-  requestTimeout: 30000, // 30 seconds
+  uploadTimeout: env.uploadTimeout,
+  requestTimeout: env.requestTimeout,
 
   // Polling
-  pollingInterval: 3000, // 3 seconds
-  maxPollingAttempts: 200, // ~10 minutes max
+  pollingInterval: env.pollingInterval,
+  maxPollingAttempts: env.maxPollingAttempts,
 } as const;
 
 // OAuth redirect URI - platform specific

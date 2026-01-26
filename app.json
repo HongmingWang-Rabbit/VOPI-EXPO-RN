@@ -75,7 +75,11 @@
       "router": {},
       "eas": {
         "projectId": "2d21e5b5-8670-47bc-860d-f69748b21922"
-      }
+      },
+      "apiUrl": "https://api.vopi.24rabbit.com",
+      "webUrl": "https://vopi.24rabbit.com",
+      "googleIOSClientId": "613369473822-pi7ut8sau3oh8i942gi2chbnkf9s069r.apps.googleusercontent.com",
+      "googleIOSReversedClientId": "com.googleusercontent.apps.613369473822-pi7ut8sau3oh8i942gi2chbnkf9s069r"
     },
     "owner": "hongmingwang"
   }

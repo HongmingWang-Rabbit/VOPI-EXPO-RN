@@ -1,4 +1,5 @@
 import { VOPIConfig } from '../config/vopi.config';
+import { APIError, TimeoutError, NetworkError, createAPIError } from '../utils/errors';
 
 type GetAccessToken = () => Promise<string | null>;
 
@@ -78,11 +79,16 @@ class APIClient {
 
         return response;
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error('Unknown error');
-
         // Don't retry on abort (timeout)
-        if (lastError.name === 'AbortError') {
-          throw new Error('Request timed out');
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new TimeoutError();
+        }
+
+        // Convert to NetworkError for connection issues
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          lastError = new NetworkError();
+        } else {
+          lastError = error instanceof Error ? error : new Error('Unknown error');
         }
 
         // Retry on network errors
@@ -93,7 +99,7 @@ class APIClient {
       }
     }
 
-    throw lastError ?? new Error('Request failed');
+    throw lastError ?? new NetworkError();
   }
 
   private delay(ms: number): Promise<void> {
@@ -102,8 +108,7 @@ class APIClient {
 
   private async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'Request failed' }));
-      throw new Error(error.message || `HTTP ${response.status}`);
+      throw await createAPIError(response);
     }
 
     return response.json();
