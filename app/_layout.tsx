@@ -8,7 +8,9 @@ import { apiClient } from '../src/services/api.client';
 import { WebContainer } from '../src/components/ui/WebContainer';
 
 // Prevent splash screen from auto-hiding
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // Ignore errors - splash screen may not be available
+});
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -30,7 +32,9 @@ function RootLayoutNav() {
   // Hide splash screen when auth is loaded
   useEffect(() => {
     if (!isLoading) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {
+        // Ignore errors - splash screen may not be available
+      });
     }
   }, [isLoading]);
 
