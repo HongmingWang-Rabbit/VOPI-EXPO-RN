@@ -1,9 +1,14 @@
+import { Platform } from 'react-native';
+
 export const VOPIConfig = {
   // Production API
   apiUrl: 'https://api.vopi.24rabbit.com',
 
-  // OAuth scheme (must match app.json "scheme")
+  // OAuth scheme (must match app.json "scheme") - for mobile
   scheme: 'vopi',
+
+  // Web URL for OAuth redirect
+  webUrl: 'https://vopi.24rabbit.com',
 
   // Timeouts
   uploadTimeout: 300000, // 5 minutes
@@ -14,8 +19,12 @@ export const VOPIConfig = {
   maxPollingAttempts: 200, // ~10 minutes max
 } as const;
 
-// OAuth redirect URI - must be registered with Google/Apple
-// Format: {scheme}://oauth/callback
+// OAuth redirect URI - platform specific
+// Mobile: vopi://oauth/callback
+// Web: https://vopi.24rabbit.com/oauth/callback
 export const getRedirectUri = () => {
+  if (Platform.OS === 'web') {
+    return `${VOPIConfig.webUrl}/oauth/callback`;
+  }
   return `${VOPIConfig.scheme}://oauth/callback`;
 };

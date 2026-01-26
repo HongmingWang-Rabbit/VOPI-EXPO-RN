@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { VOPIConfig, getRedirectUri } from '../config/vopi.config';
 import { User } from '../types/vopi.types';
@@ -152,6 +153,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await storage.setItem('oauth_provider', provider);
 
       // Step 2: Open browser for OAuth
+      if (Platform.OS === 'web') {
+        // On web, redirect directly - the callback page will handle the rest
+        window.location.href = authorizationUrl;
+        return;
+      }
+
+      // On mobile, use WebBrowser
       const result = await WebBrowser.openAuthSessionAsync(
         authorizationUrl,
         redirectUri
