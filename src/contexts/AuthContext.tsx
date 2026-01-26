@@ -152,12 +152,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(errorData.message || `Failed to initialize OAuth (${initResponse.status})`);
       }
 
-      const { authorizationUrl, state: oauthState, codeVerifier } = await initResponse.json();
+      const initData = await initResponse.json();
+      // Handle both camelCase and snake_case from backend
+      const authorizationUrl = initData.authorizationUrl || initData.authorization_url;
+      const oauthState = initData.state;
+      const codeVerifier = initData.codeVerifier || initData.code_verifier;
+
+      // Debug logging for OAuth init
+      if (__DEV__) {
+        console.log('[OAuth] Init response:', {
+          hasAuthUrl: !!authorizationUrl,
+          hasState: !!oauthState,
+          hasCodeVerifier: !!codeVerifier,
+          codeVerifierLength: codeVerifier?.length,
+        });
+      }
 
       // Store OAuth state temporarily
       await storage.setItem('oauth_state', oauthState);
-      await storage.setItem('oauth_code_verifier', codeVerifier || '');
+      if (codeVerifier) {
+        await storage.setItem('oauth_code_verifier', codeVerifier);
+      }
       await storage.setItem('oauth_provider', provider);
+
+      // Verify storage worked
+      if (__DEV__) {
+        const storedVerifier = await storage.getItem('oauth_code_verifier');
+        console.log('[OAuth] Stored codeVerifier:', {
+          stored: !!storedVerifier,
+          length: storedVerifier?.length,
+        });
+      }
 
       // Step 2: Open browser for OAuth
       if (Platform.OS === 'web') {
@@ -188,26 +213,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedCodeVerifier = await storage.getItem('oauth_code_verifier');
       const storedProvider = await storage.getItem('oauth_provider');
 
+      // Debug logging for OAuth callback
+      if (__DEV__) {
+        console.log('[OAuth] Retrieved from storage:', {
+          hasState: !!storedState,
+          hasCodeVerifier: !!storedCodeVerifier,
+          codeVerifierLength: storedCodeVerifier?.length,
+          hasProvider: !!storedProvider,
+        });
+      }
+
       // Validate state
       if (returnedState !== storedState) {
         throw new Error('OAuth state mismatch - possible CSRF attack');
+      }
+
+      // Build callback request body
+      const callbackBody: Record<string, unknown> = {
+        provider: storedProvider,
+        code,
+        redirectUri,
+        state: storedState,
+        platform: Platform.OS,
+        deviceInfo: {
+          deviceName: `Expo App`,
+        },
+      };
+
+      // Only include codeVerifier if we have one (required for mobile PKCE)
+      if (storedCodeVerifier) {
+        callbackBody.codeVerifier = storedCodeVerifier;
+        callbackBody.code_verifier = storedCodeVerifier; // Also send snake_case in case backend expects it
+      }
+
+      if (__DEV__) {
+        console.log('[OAuth] Sending callback request:', {
+          provider: callbackBody.provider,
+          hasCode: !!callbackBody.code,
+          hasCodeVerifier: !!callbackBody.codeVerifier,
+          platform: callbackBody.platform,
+        });
       }
 
       // Step 4: Exchange code for tokens
       const callbackResponse = await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/oauth/callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: storedProvider,
-          code,
-          redirectUri,
-          state: storedState,
-          codeVerifier: storedCodeVerifier || undefined,
-          platform: Platform.OS,
-          deviceInfo: {
-            deviceName: `Expo App`,
-          },
-        }),
+        body: JSON.stringify(callbackBody),
       });
 
       if (!callbackResponse.ok) {
