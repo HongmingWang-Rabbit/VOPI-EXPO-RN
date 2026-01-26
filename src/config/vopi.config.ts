@@ -10,6 +10,10 @@ export const VOPIConfig = {
   // Web URL for OAuth redirect
   webUrl: 'https://vopi.24rabbit.com',
 
+  // Google OAuth iOS client ID (reversed for redirect URI)
+  googleIOSClientId: '613369473822-pi7ut8sau3oh8i942gi2chbnkf9s069r.apps.googleusercontent.com',
+  googleIOSReversedClientId: 'com.googleusercontent.apps.613369473822-pi7ut8sau3oh8i942gi2chbnkf9s069r',
+
   // Timeouts
   uploadTimeout: 300000, // 5 minutes
   requestTimeout: 30000, // 30 seconds
@@ -20,11 +24,16 @@ export const VOPIConfig = {
 } as const;
 
 // OAuth redirect URI - platform specific
-// Mobile: vopi://oauth/callback
+// iOS: {reversed_client_id}:/oauth2redirect/google (Google's required format)
+// Android: {scheme}://oauth/callback
 // Web: https://vopi.24rabbit.com/oauth/callback
 export const getRedirectUri = () => {
   if (Platform.OS === 'web') {
     return `${VOPIConfig.webUrl}/oauth/callback`;
   }
+  if (Platform.OS === 'ios') {
+    return `${VOPIConfig.googleIOSReversedClientId}:/oauth2redirect/google`;
+  }
+  // Android
   return `${VOPIConfig.scheme}://oauth/callback`;
 };
