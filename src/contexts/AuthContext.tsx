@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { VOPIConfig, getRedirectUri } from '../config/vopi.config';
 import { User } from '../types/vopi.types';
+import { storage } from '../utils/storage';
 
 // Ensure web browser auth sessions are dismissed
 WebBrowser.maybeCompleteAuthSession();
@@ -49,8 +49,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loadStoredAuth = async () => {
     try {
       const [accessToken, userJson] = await Promise.all([
-        SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN),
-        SecureStore.getItemAsync(STORAGE_KEYS.USER),
+        storage.getItem(STORAGE_KEYS.ACCESS_TOKEN),
+        storage.getItem(STORAGE_KEYS.USER),
       ]);
 
       if (accessToken && userJson) {
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isLoading: false,
             isAuthenticated: true,
           });
-          await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(freshUser));
+          await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(freshUser));
         } catch {
           // Token might be expired, try refresh
           const newToken = await refreshAccessToken();
@@ -147,9 +147,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[Auth] Got authorization URL, opening browser...');
 
       // Store OAuth state temporarily
-      await SecureStore.setItemAsync('oauth_state', oauthState);
-      await SecureStore.setItemAsync('oauth_code_verifier', codeVerifier || '');
-      await SecureStore.setItemAsync('oauth_provider', provider);
+      await storage.setItem('oauth_state', oauthState);
+      await storage.setItem('oauth_code_verifier', codeVerifier || '');
+      await storage.setItem('oauth_provider', provider);
 
       // Step 2: Open browser for OAuth
       const result = await WebBrowser.openAuthSessionAsync(
@@ -177,9 +177,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Retrieve stored OAuth state
-      const storedState = await SecureStore.getItemAsync('oauth_state');
-      const storedCodeVerifier = await SecureStore.getItemAsync('oauth_code_verifier');
-      const storedProvider = await SecureStore.getItemAsync('oauth_provider');
+      const storedState = await storage.getItem('oauth_state');
+      const storedCodeVerifier = await storage.getItem('oauth_code_verifier');
+      const storedProvider = await storage.getItem('oauth_provider');
 
       // Validate state
       if (returnedState !== storedState) {
@@ -215,16 +215,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Store tokens and user
       await Promise.all([
-        SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
-        SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, refreshToken),
-        SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(user)),
+        storage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
+        storage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken),
+        storage.setItem(STORAGE_KEYS.USER, JSON.stringify(user)),
       ]);
 
       // Clean up OAuth state
       await Promise.all([
-        SecureStore.deleteItemAsync('oauth_state'),
-        SecureStore.deleteItemAsync('oauth_code_verifier'),
-        SecureStore.deleteItemAsync('oauth_provider'),
+        storage.deleteItem('oauth_state'),
+        storage.deleteItem('oauth_code_verifier'),
+        storage.deleteItem('oauth_provider'),
       ]);
 
       setState({
@@ -244,7 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
-      const refreshToken = await SecureStore.getItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
+      const refreshToken = await storage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 
       if (refreshToken) {
         // Revoke token on server
@@ -264,9 +264,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const clearAuth = async () => {
     await Promise.all([
-      SecureStore.deleteItemAsync(STORAGE_KEYS.ACCESS_TOKEN),
-      SecureStore.deleteItemAsync(STORAGE_KEYS.REFRESH_TOKEN),
-      SecureStore.deleteItemAsync(STORAGE_KEYS.USER),
+      storage.deleteItem(STORAGE_KEYS.ACCESS_TOKEN),
+      storage.deleteItem(STORAGE_KEYS.REFRESH_TOKEN),
+      storage.deleteItem(STORAGE_KEYS.USER),
     ]);
   };
 
@@ -279,7 +279,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isRefreshing.current = true;
     refreshPromise.current = (async () => {
       try {
-        const refreshToken = await SecureStore.getItemAsync(STORAGE_KEYS.REFRESH_TOKEN);
+        const refreshToken = await storage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 
         if (!refreshToken) {
           return null;
@@ -299,8 +299,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { accessToken, refreshToken: newRefreshToken } = await response.json();
 
         await Promise.all([
-          SecureStore.setItemAsync(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
-          SecureStore.setItemAsync(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken),
+          storage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
+          storage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken),
         ]);
 
         return accessToken;
@@ -317,7 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
-    const accessToken = await SecureStore.getItemAsync(STORAGE_KEYS.ACCESS_TOKEN);
+    const accessToken = await storage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
 
     if (!accessToken) {
       return null;
@@ -347,7 +347,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (accessToken) {
       const freshUser = await fetchUserProfile(accessToken);
       setState(prev => ({ ...prev, user: freshUser }));
-      await SecureStore.setItemAsync(STORAGE_KEYS.USER, JSON.stringify(freshUser));
+      await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(freshUser));
     }
   }, [getAccessToken]);
 
