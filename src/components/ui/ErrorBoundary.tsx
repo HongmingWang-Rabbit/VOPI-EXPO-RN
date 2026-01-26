@@ -27,11 +27,10 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Log error to console in development
-    if (__DEV__) {
-      console.error('[ErrorBoundary] Caught error:', error);
-      console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
-    }
+    // Always log errors to help with debugging
+    console.error('[ErrorBoundary] Caught error:', error.message);
+    console.error('[ErrorBoundary] Stack:', error.stack);
+    console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
 
     // In production, you would send this to an error tracking service
     // Example: Sentry.captureException(error, { extra: errorInfo });
@@ -48,15 +47,16 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      // Default error UI
+      // Default error UI - always show error message to help debugging
+      const errorMessage = this.state.error?.message || 'An unexpected error occurred';
+
       return (
         <View style={styles.container}>
           <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.message}>
-            {__DEV__ && this.state.error
-              ? this.state.error.message
-              : 'An unexpected error occurred. Please try again.'}
-          </Text>
+          <Text style={styles.message}>{errorMessage}</Text>
+          {__DEV__ && this.state.error?.stack && (
+            <Text style={styles.stack}>{this.state.error.stack.slice(0, 500)}</Text>
+          )}
           <TouchableOpacity
             style={styles.button}
             onPress={this.handleRetry}
@@ -92,8 +92,15 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     lineHeight: 22,
+  },
+  stack: {
+    fontSize: fontSize.xs,
+    color: colors.textTertiary,
+    textAlign: 'left',
+    marginBottom: spacing.xl,
+    fontFamily: 'monospace',
   },
   button: {
     backgroundColor: colors.primary,
