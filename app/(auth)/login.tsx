@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Link } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 
 export default function LoginScreen() {
@@ -54,9 +55,20 @@ export default function LoginScreen() {
         )}
       </View>
 
-      <Text style={styles.terms}>
-        By continuing, you agree to our Terms of Service and Privacy Policy
-      </Text>
+      <View style={styles.termsContainer}>
+        <Text style={styles.terms}>By continuing, you agree to our </Text>
+        <Link href="/terms-of-service" asChild>
+          <TouchableOpacity>
+            <Text style={styles.termsLink}>Terms of Service</Text>
+          </TouchableOpacity>
+        </Link>
+        <Text style={styles.terms}> and </Text>
+        <Link href="/privacy" asChild>
+          <TouchableOpacity>
+            <Text style={styles.termsLink}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </Link>
+      </View>
     </SafeAreaView>
   );
 }
@@ -115,10 +127,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  terms: {
+  termsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
     marginTop: 40,
+  },
+  terms: {
     fontSize: 12,
     color: '#999',
-    textAlign: 'center',
+  },
+  termsLink: {
+    fontSize: 12,
+    color: '#007AFF',
+    textDecorationLine: 'underline',
   },
 });

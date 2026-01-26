@@ -44,6 +44,8 @@ function RootLayoutNav() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="results" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="privacy" options={{ headerShown: true, title: 'Privacy Policy' }} />
+        <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: 'Terms of Service' }} />
       </Stack>
       <StatusBar style="auto" />
     </WebContainer>
