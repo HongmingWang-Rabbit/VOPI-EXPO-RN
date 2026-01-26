@@ -4,20 +4,19 @@ import * as SecureStore from 'expo-secure-store';
 /**
  * Cross-platform secure storage utility
  * - Uses expo-secure-store on native (iOS/Android) - encrypted storage
- * - Uses sessionStorage on web for sensitive data (tokens)
+ * - Uses localStorage on web (persists across sessions)
  *
  * Security notes for web:
- * - sessionStorage is cleared when the browser tab closes
- * - This provides some protection against persistent XSS attacks
- * - For production, consider using httpOnly cookies for tokens
+ * - localStorage persists until explicitly cleared
+ * - For production with high security needs, consider httpOnly cookies
+ * - OAuth temporary state uses sessionStorage (cleared on tab close)
  *
  * @see https://docs.expo.dev/versions/latest/sdk/securestore/
  */
 
-// Keys that should use session storage on web for security
+// Keys that should use sessionStorage (temporary, cleared on tab close)
+// Only OAuth flow state - NOT tokens (tokens need to persist)
 const SESSION_STORAGE_KEYS = new Set([
-  'vopi_access_token',
-  'vopi_refresh_token',
   'oauth_state',
   'oauth_code_verifier',
 ]);
@@ -25,7 +24,7 @@ const SESSION_STORAGE_KEYS = new Set([
 export const storage = {
   async getItem(key: string): Promise<string | null> {
     if (Platform.OS === 'web') {
-      // Use sessionStorage for sensitive keys, localStorage for others
+      // OAuth state uses sessionStorage (temporary), everything else uses localStorage
       if (SESSION_STORAGE_KEYS.has(key)) {
         return sessionStorage.getItem(key);
       }
@@ -36,7 +35,7 @@ export const storage = {
 
   async setItem(key: string, value: string): Promise<void> {
     if (Platform.OS === 'web') {
-      // Use sessionStorage for sensitive keys, localStorage for others
+      // OAuth state uses sessionStorage (temporary), everything else uses localStorage
       if (SESSION_STORAGE_KEYS.has(key)) {
         sessionStorage.setItem(key, value);
         return;
