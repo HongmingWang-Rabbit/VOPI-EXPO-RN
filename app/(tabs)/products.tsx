@@ -1,8 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { vopiService } from '../../src/services/vopi.service';
 import { Job } from '../../src/types/vopi.types';
@@ -12,6 +11,7 @@ const JOBS_LIMIT = 50;
 
 export default function ProductsScreen() {
   const router = useRouter();
+  const pathname = usePathname();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -33,12 +33,10 @@ export default function ProductsScreen() {
     }
   }, []);
 
-  // Refetch jobs when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      fetchJobs();
-    }, [fetchJobs])
-  );
+  // Fetch jobs on mount and when navigating to this screen
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs, pathname]);
 
   const onRefresh = () => {
     setRefreshing(true);
