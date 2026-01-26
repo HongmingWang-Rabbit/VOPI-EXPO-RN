@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useCredits } from '../../src/hooks/useCredits';
 import { useVOPIUpload } from '../../src/hooks/useVOPIUpload';
@@ -11,9 +11,21 @@ import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/t
 
 export default function HomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ videoUri?: string }>();
   const { user, signOut } = useAuth();
   const { balance, refresh: refreshCredits } = useCredits();
   const { state, uploadAndProcess, cancel, reset } = useVOPIUpload();
+
+  // Track if we've already processed this videoUri to prevent double-processing
+  const processedUriRef = useRef<string | null>(null);
+
+  // Auto-process video from capture screen
+  useEffect(() => {
+    if (params.videoUri && params.videoUri !== processedUriRef.current && state.status === 'idle') {
+      processedUriRef.current = params.videoUri;
+      uploadAndProcess({ uri: params.videoUri, mimeType: 'video/mp4' });
+    }
+  }, [params.videoUri, state.status, uploadAndProcess]);
 
   const handleVideoSelect = async (video: { uri: string; fileName?: string; mimeType?: string }) => {
     await uploadAndProcess(video);

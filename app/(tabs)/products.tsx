@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { vopiService } from '../../src/services/vopi.service';
 import { Job } from '../../src/types/vopi.types';
@@ -14,22 +15,30 @@ export default function ProductsScreen() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchJobs = useCallback(async () => {
     try {
+      setError(null);
       const result = await vopiService.listJobs({ limit: JOBS_LIMIT });
       setJobs(result.jobs);
-    } catch {
-      // Silently fail - empty state will show
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load jobs');
+      if (__DEV__) {
+        console.error('[Products] Failed to fetch jobs:', err);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
+  // Refetch jobs when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchJobs();
+    }, [fetchJobs])
+  );
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -93,6 +102,29 @@ export default function ProductsScreen() {
     </View>
   );
 
+  const renderError = () => (
+    <View style={styles.emptyContainer}>
+      <Ionicons name="alert-circle-outline" size={64} color={colors.error} />
+      <Text style={styles.emptyTitle}>Failed to Load</Text>
+      <Text style={styles.emptyText}>{error}</Text>
+      <TouchableOpacity
+        style={styles.retryButton}
+        onPress={fetchJobs}
+        accessibilityRole="button"
+        accessibilityLabel="Retry loading products"
+      >
+        <Text style={styles.retryButtonText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderLoading = () => (
+    <View style={styles.emptyContainer}>
+      <ActivityIndicator size="large" color={colors.primary} />
+      <Text style={styles.loadingText}>Loading products...</Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -107,7 +139,9 @@ export default function ProductsScreen() {
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
-        ListEmptyComponent={!loading ? renderEmpty : null}
+        ListEmptyComponent={
+          loading ? renderLoading() : error ? renderError() : renderEmpty()
+        }
       />
     </SafeAreaView>
   );
@@ -184,5 +218,22 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  loadingText: {
+    marginTop: spacing.lg,
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
+  },
+  retryButton: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+  },
+  retryButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
 });
