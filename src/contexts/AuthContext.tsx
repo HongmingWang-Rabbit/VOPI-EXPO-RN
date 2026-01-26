@@ -147,7 +147,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch user profile');
+      // Include status code in error for proper 401 detection
+      throw new Error(`Failed to fetch user profile (${response.status})`);
     }
 
     const profile = await response.json();
