@@ -1,10 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
+import { formatDuration } from '../../src/utils/strings';
 
 export default function CaptureScreen() {
   const router = useRouter();
@@ -12,10 +14,20 @@ export default function CaptureScreen() {
   const [facing, setFacing] = useState<CameraType>('back');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const recordingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
+
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+    };
+  }, []);
 
   const startRecording = async () => {
     if (!cameraRef.current) return;
@@ -26,7 +38,7 @@ export default function CaptureScreen() {
       setRecordingDuration(0);
 
       // Start duration counter
-      recordingInterval.current = setInterval(() => {
+      recordingIntervalRef.current = setInterval(() => {
         setRecordingDuration((prev) => prev + 1);
       }, 1000);
 
@@ -54,13 +66,12 @@ export default function CaptureScreen() {
         );
       }
     } catch (error) {
-      console.error('Recording error:', error);
-      Alert.alert('Error', 'Failed to record video');
+      Alert.alert('Error', 'Failed to record video. Please try again.');
     } finally {
       setIsRecording(false);
-      if (recordingInterval.current) {
-        clearInterval(recordingInterval.current);
-        recordingInterval.current = null;
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
       }
     }
   };
@@ -68,9 +79,9 @@ export default function CaptureScreen() {
   const stopRecording = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     cameraRef.current?.stopRecording();
-    if (recordingInterval.current) {
-      clearInterval(recordingInterval.current);
-      recordingInterval.current = null;
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
     }
   };
 
@@ -78,17 +89,11 @@ export default function CaptureScreen() {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
   };
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   // Handle permissions
   if (!cameraPermission || !micPermission) {
     return (
       <SafeAreaView style={styles.container}>
-        <Text>Loading...</Text>
+        <Text style={styles.loadingText}>Loading...</Text>
       </SafeAreaView>
     );
   }
@@ -106,6 +111,8 @@ export default function CaptureScreen() {
             await requestCameraPermission();
             await requestMicPermission();
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Grant camera and microphone permission"
         >
           <Text style={styles.permissionButtonText}>Grant Permission</Text>
         </TouchableOpacity>
@@ -133,13 +140,23 @@ export default function CaptureScreen() {
 
         {/* Bottom Controls */}
         <View style={styles.controls}>
-          <TouchableOpacity style={styles.sideButton} onPress={toggleFacing} disabled={isRecording}>
-            <Ionicons name="camera-reverse" size={28} color={isRecording ? '#666' : '#fff'} />
+          <TouchableOpacity
+            style={styles.sideButton}
+            onPress={toggleFacing}
+            disabled={isRecording}
+            accessibilityRole="button"
+            accessibilityLabel="Switch camera"
+            accessibilityState={{ disabled: isRecording }}
+          >
+            <Ionicons name="camera-reverse" size={28} color={isRecording ? colors.textSecondary : colors.white} />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.recordButton, isRecording && styles.recordButtonActive]}
             onPress={isRecording ? stopRecording : startRecording}
+            accessibilityRole="button"
+            accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
+            accessibilityState={{ selected: isRecording }}
           >
             {isRecording ? (
               <View style={styles.stopIcon} />
@@ -158,68 +175,75 @@ export default function CaptureScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.black,
+  },
+  loadingText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    textAlign: 'center',
+    marginTop: spacing.xl,
   },
   camera: {
     flex: 1,
   },
   permissionContainer: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
   permissionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 12,
+    fontSize: fontSize.xxl,
+    fontWeight: fontWeight.bold,
+    marginBottom: spacing.md,
     textAlign: 'center',
+    color: colors.text,
   },
   permissionText: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
   permissionButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.primary,
     paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    paddingHorizontal: spacing.xl,
+    borderRadius: borderRadius.lg,
   },
   permissionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
   topBar: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    padding: 16,
+    padding: spacing.lg,
     alignItems: 'center',
   },
   recordingIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 59, 48, 0.9)',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: borderRadius.xl,
   },
   recordingDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#fff',
-    marginRight: 8,
+    backgroundColor: colors.white,
+    marginRight: spacing.sm,
   },
   recordingText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    color: colors.white,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
   },
   controls: {
     position: 'absolute',
@@ -229,7 +253,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.xl,
   },
   sideButton: {
     width: 50,
@@ -245,22 +269,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 4,
-    borderColor: '#fff',
+    borderColor: colors.white,
   },
   recordButtonActive: {
     backgroundColor: 'rgba(255, 59, 48, 0.3)',
-    borderColor: '#FF3B30',
+    borderColor: colors.error,
   },
   recordIcon: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#FF3B30',
+    backgroundColor: colors.error,
   },
   stopIcon: {
     width: 30,
     height: 30,
     borderRadius: 4,
-    backgroundColor: '#FF3B30',
+    backgroundColor: colors.error,
   },
 });

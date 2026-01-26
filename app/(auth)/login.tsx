@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Platform, 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link } from 'expo-router';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
 
 export default function LoginScreen() {
   const { signInWithGoogle, signInWithApple, isLoading } = useAuth();
@@ -11,7 +12,6 @@ export default function LoginScreen() {
     try {
       await signInWithGoogle();
     } catch (error) {
-      console.error('Google sign in failed:', error);
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       Alert.alert('Sign In Failed', message);
     }
@@ -21,7 +21,6 @@ export default function LoginScreen() {
     try {
       await signInWithApple();
     } catch (error) {
-      console.error('Apple sign in failed:', error);
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       Alert.alert('Sign In Failed', message);
     }
@@ -30,7 +29,7 @@ export default function LoginScreen() {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>Signing in...</Text>
       </SafeAreaView>
     );
@@ -39,17 +38,27 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>VOPI</Text>
+        <Text style={styles.title} accessibilityRole="header">VOPI</Text>
         <Text style={styles.subtitle}>Video to Product Instant</Text>
       </View>
 
       <View style={styles.buttons}>
-        <TouchableOpacity style={styles.googleButton} onPress={handleGoogleSignIn}>
+        <TouchableOpacity
+          style={styles.googleButton}
+          onPress={handleGoogleSignIn}
+          accessibilityRole="button"
+          accessibilityLabel="Continue with Google"
+        >
           <Text style={styles.googleButtonText}>Continue with Google</Text>
         </TouchableOpacity>
 
         {Platform.OS === 'ios' && (
-          <TouchableOpacity style={styles.appleButton} onPress={handleAppleSignIn}>
+          <TouchableOpacity
+            style={styles.appleButton}
+            onPress={handleAppleSignIn}
+            accessibilityRole="button"
+            accessibilityLabel="Continue with Apple"
+          >
             <Text style={styles.appleButtonText}>Continue with Apple</Text>
           </TouchableOpacity>
         )}
@@ -58,13 +67,13 @@ export default function LoginScreen() {
       <View style={styles.termsContainer}>
         <Text style={styles.terms}>By continuing, you agree to our </Text>
         <Link href="/terms-of-service" asChild>
-          <TouchableOpacity>
+          <TouchableOpacity accessibilityRole="link">
             <Text style={styles.termsLink}>Terms of Service</Text>
           </TouchableOpacity>
         </Link>
         <Text style={styles.terms}> and </Text>
         <Link href="/privacy" asChild>
-          <TouchableOpacity>
+          <TouchableOpacity accessibilityRole="link">
             <Text style={styles.termsLink}>Privacy Policy</Text>
           </TouchableOpacity>
         </Link>
@@ -76,8 +85,8 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    padding: 24,
+    backgroundColor: colors.white,
+    padding: spacing.xl,
     justifyContent: 'center',
   },
   header: {
@@ -85,47 +94,47 @@ const styles = StyleSheet.create({
     marginBottom: 60,
   },
   title: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#1a1a1a',
+    fontSize: fontSize.display,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
   },
   subtitle: {
-    fontSize: 18,
-    color: '#666',
-    marginTop: 8,
+    fontSize: fontSize.lg,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
+    marginTop: spacing.lg,
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   buttons: {
-    gap: 16,
+    gap: spacing.lg,
   },
   googleButton: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: '#ddd',
-    paddingVertical: 16,
-    borderRadius: 12,
+    borderColor: colors.borderDark,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
   },
   googleButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1a1a1a',
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
   appleButton: {
-    backgroundColor: '#000',
-    paddingVertical: 16,
-    borderRadius: 12,
+    backgroundColor: colors.black,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
   },
   appleButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    color: colors.white,
   },
   termsContainer: {
     flexDirection: 'row',
@@ -134,12 +143,12 @@ const styles = StyleSheet.create({
     marginTop: 40,
   },
   terms: {
-    fontSize: 12,
-    color: '#999',
+    fontSize: fontSize.xs,
+    color: colors.textTertiary,
   },
   termsLink: {
-    fontSize: 12,
-    color: '#007AFF',
+    fontSize: fontSize.xs,
+    color: colors.primary,
     textDecorationLine: 'underline',
   },
 });

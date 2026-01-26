@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Image } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { vopiService } from '../../src/services/vopi.service';
 import { Job } from '../../src/types/vopi.types';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
+
+const JOBS_LIMIT = 50;
 
 export default function ProductsScreen() {
   const router = useRouter();
@@ -12,21 +15,21 @@ export default function ProductsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
-      const result = await vopiService.listJobs({ limit: 50 });
+      const result = await vopiService.listJobs({ limit: JOBS_LIMIT });
       setJobs(result.jobs);
-    } catch (error) {
-      console.error('Failed to fetch jobs:', error);
+    } catch {
+      // Silently fail - empty state will show
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchJobs();
-  }, []);
+  }, [fetchJobs]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -36,14 +39,14 @@ export default function ProductsScreen() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'completed':
-        return '#34C759';
+        return colors.success;
       case 'failed':
       case 'cancelled':
-        return '#FF3B30';
+        return colors.error;
       case 'pending':
-        return '#FF9500';
+        return colors.warning;
       default:
-        return '#007AFF';
+        return colors.primary;
     }
   };
 
@@ -59,6 +62,9 @@ export default function ProductsScreen() {
         }
       }}
       disabled={item.status !== 'completed'}
+      accessibilityRole="button"
+      accessibilityLabel={`Job ${item.id.slice(0, 8)}, status ${item.status}${item.status === 'completed' ? ', tap to view results' : ''}`}
+      accessibilityState={{ disabled: item.status !== 'completed' }}
     >
       <View style={styles.jobInfo}>
         <Text style={styles.jobId} numberOfLines={1}>
@@ -72,14 +78,14 @@ export default function ProductsScreen() {
         </View>
       </View>
       {item.status === 'completed' && (
-        <Ionicons name="chevron-forward" size={20} color="#ccc" />
+        <Ionicons name="chevron-forward" size={20} color={colors.borderDark} />
       )}
     </TouchableOpacity>
   );
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Ionicons name="cube-outline" size={64} color="#ccc" />
+      <Ionicons name="cube-outline" size={64} color={colors.borderDark} />
       <Text style={styles.emptyTitle}>No Products Yet</Text>
       <Text style={styles.emptyText}>
         Process a video to see your products here
@@ -90,7 +96,7 @@ export default function ProductsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Products</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">Products</Text>
       </View>
 
       <FlatList
@@ -110,53 +116,55 @@ export default function ProductsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
   },
   header: {
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: fontSize.xxl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
   },
   listContent: {
-    padding: 16,
+    padding: spacing.lg,
     flexGrow: 1,
   },
   jobCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f8f8f8',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
+    backgroundColor: colors.backgroundTertiary,
+    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
   },
   jobInfo: {
     flex: 1,
   },
   jobId: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+    marginBottom: spacing.xs,
+    color: colors.text,
   },
   jobDate: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 8,
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
   },
   statusBadge: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: 6,
   },
   statusText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
+    color: colors.white,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
     textTransform: 'capitalize',
   },
   emptyContainer: {
@@ -166,14 +174,15 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.semibold,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    color: colors.text,
   },
   emptyText: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 });

@@ -7,6 +7,7 @@ import { useCredits } from '../../src/hooks/useCredits';
 import { useVOPIUpload } from '../../src/hooks/useVOPIUpload';
 import { VideoPicker } from '../../src/components/ui/VideoPicker';
 import { UploadProgress } from '../../src/components/ui/UploadProgress';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -39,14 +40,18 @@ export default function HomeScreen() {
           <Text style={styles.greeting}>Hello, {user?.name || 'User'}</Text>
           <Text style={styles.credits}>{balance} credits</Text>
         </View>
-        <TouchableOpacity onPress={signOut}>
+        <TouchableOpacity
+          onPress={signOut}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+        >
           <Text style={styles.signOut}>Sign Out</Text>
         </TouchableOpacity>
       </View>
 
       {/* Main Content */}
       <View style={styles.content}>
-        <Text style={styles.title}>Process Video</Text>
+        <Text style={styles.title} accessibilityRole="header">Process Video</Text>
         <Text style={styles.description}>
           Select a product video to extract frames and generate commercial images.
         </Text>
@@ -57,7 +62,12 @@ export default function HomeScreen() {
 
         {state.status === 'completed' && (
           <View style={styles.completedActions}>
-            <TouchableOpacity style={styles.primaryButton} onPress={handleViewResults}>
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleViewResults}
+              accessibilityRole="button"
+              accessibilityLabel="View processing results"
+            >
               <Text style={styles.primaryButtonText}>View Results</Text>
             </TouchableOpacity>
 
@@ -67,6 +77,8 @@ export default function HomeScreen() {
                 reset();
                 refreshCredits();
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Process another video"
             >
               <Text style={styles.secondaryButtonText}>Process Another Video</Text>
             </TouchableOpacity>
@@ -74,7 +86,12 @@ export default function HomeScreen() {
         )}
 
         {(state.status === 'error' || state.status === 'cancelled') && (
-          <TouchableOpacity style={styles.secondaryButton} onPress={reset}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={reset}
+            accessibilityRole="button"
+            accessibilityLabel="Try again"
+          >
             <Text style={styles.secondaryButtonText}>Try Again</Text>
           </TouchableOpacity>
         )}
@@ -86,70 +103,72 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   greeting: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
   credits: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   signOut: {
-    color: '#FF3B30',
-    fontSize: 14,
+    color: colors.error,
+    fontSize: fontSize.sm,
   },
   content: {
     flex: 1,
-    padding: 24,
+    padding: spacing.xl,
     justifyContent: 'center',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: fontSize.xxxl,
+    fontWeight: fontWeight.bold,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
+    color: colors.text,
   },
   description: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 32,
+    marginBottom: spacing.xxl,
   },
   completedActions: {
-    marginTop: 24,
-    gap: 12,
+    marginTop: spacing.xl,
+    gap: spacing.md,
   },
   primaryButton: {
-    backgroundColor: '#34C759',
-    paddingVertical: 16,
-    borderRadius: 12,
+    backgroundColor: colors.success,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
   },
   primaryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
   secondaryButton: {
-    backgroundColor: '#f5f5f5',
-    paddingVertical: 16,
-    borderRadius: 12,
+    backgroundColor: colors.backgroundSecondary,
+    paddingVertical: spacing.lg,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: '#333',
-    fontSize: 16,
-    fontWeight: '500',
+    color: colors.text,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
   },
 });

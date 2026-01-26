@@ -1,6 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../theme';
 
 interface VideoPickerProps {
   onSelect: (video: { uri: string; fileName?: string; mimeType?: string }) => void;
@@ -34,8 +35,8 @@ export function VideoPicker({ onSelect, disabled }: VideoPickerProps) {
           mimeType: asset.mimeType || 'video/mp4',
         });
       }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to access video library');
+    } catch {
+      Alert.alert('Error', 'Failed to access video library. Please try again.');
     }
   };
 
@@ -44,6 +45,9 @@ export function VideoPicker({ onSelect, disabled }: VideoPickerProps) {
       style={[styles.button, disabled && styles.buttonDisabled]}
       onPress={handlePress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel="Select video from library"
+      accessibilityState={{ disabled }}
     >
       <Text style={[styles.buttonText, disabled && styles.buttonTextDisabled]}>
         Select Video
@@ -54,21 +58,21 @@ export function VideoPicker({ onSelect, disabled }: VideoPickerProps) {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xxl,
+    borderRadius: borderRadius.lg,
     alignItems: 'center',
   },
   buttonDisabled: {
-    backgroundColor: '#ccc',
+    backgroundColor: colors.borderDark,
   },
   buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
   buttonTextDisabled: {
-    color: '#999',
+    color: colors.textTertiary,
   },
 });

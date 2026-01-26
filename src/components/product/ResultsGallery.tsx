@@ -4,20 +4,21 @@ import {
   Text,
   ScrollView,
   StyleSheet,
-  Dimensions,
   TouchableOpacity,
   Image,
+  useWindowDimensions,
 } from 'react-native';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../theme';
 
 interface ResultsGalleryProps {
   images: Record<string, Record<string, string>>;
   onImagePress?: (url: string) => void;
 }
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const IMAGE_SIZE = (SCREEN_WIDTH - 48) / 2;
-
 export function ResultsGallery({ images, onImagePress }: ResultsGalleryProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const imageSize = (screenWidth - 48) / 2;
+
   const variants = Object.keys(images);
 
   if (variants.length === 0) {
@@ -40,14 +41,17 @@ export function ResultsGallery({ images, onImagePress }: ResultsGalleryProps) {
             {Object.entries(images[variant]).map(([version, url]) => (
               <TouchableOpacity
                 key={version}
-                style={styles.imageContainer}
+                style={[styles.imageContainer, { width: imageSize }]}
                 onPress={() => onImagePress?.(url)}
                 activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={`View ${variant} ${version} image`}
               >
                 <Image
                   source={{ uri: url }}
-                  style={styles.image}
+                  style={[styles.image, { width: imageSize, height: imageSize }]}
                   resizeMode="cover"
+                  accessibilityLabel={`${variant} ${version} product image`}
                 />
                 <Text style={styles.versionLabel}>
                   {version.charAt(0).toUpperCase() + version.slice(1)}
@@ -71,38 +75,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 16,
-    color: '#888',
+    fontSize: fontSize.md,
+    color: colors.textTertiary,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-    paddingHorizontal: 16,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    marginBottom: spacing.md,
+    paddingHorizontal: spacing.lg,
+    color: colors.text,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 12,
+    paddingHorizontal: spacing.md,
   },
   imageContainer: {
-    width: IMAGE_SIZE,
-    marginHorizontal: 4,
-    marginBottom: 8,
+    marginHorizontal: spacing.xs,
+    marginBottom: spacing.sm,
   },
   image: {
-    width: IMAGE_SIZE,
-    height: IMAGE_SIZE,
-    borderRadius: 8,
-    backgroundColor: '#F0F0F0',
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.backgroundSecondary,
   },
   versionLabel: {
-    fontSize: 12,
-    color: '#666',
-    marginTop: 4,
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
     textAlign: 'center',
   },
 });

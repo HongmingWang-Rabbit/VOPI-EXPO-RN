@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, ViewStyle } from 'react-native';
+import { colors } from '../../theme';
 
 interface WebContainerProps {
   children: React.ReactNode;
@@ -28,17 +29,22 @@ const styles = StyleSheet.create({
   webWrapper: {
     flex: 1,
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.backgroundSecondary,
   },
   webContent: {
     flex: 1,
     width: '100%',
-    backgroundColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    // @ts-ignore - web only
-    boxShadow: '0 0 20px rgba(0,0,0,0.1)',
+    backgroundColor: colors.white,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 0 20px rgba(0,0,0,0.1)',
+      } as ViewStyle,
+      default: {
+        shadowColor: colors.black,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+      },
+    }),
   },
 });

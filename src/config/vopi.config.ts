@@ -37,3 +37,18 @@ export const getRedirectUri = () => {
   // Android
   return `${VOPIConfig.scheme}://oauth/callback`;
 };
+
+// Checkout redirect URLs - platform specific
+export const getCheckoutUrls = () => {
+  if (Platform.OS === 'web') {
+    return {
+      success: `${VOPIConfig.webUrl}/purchase/success`,
+      cancel: `${VOPIConfig.webUrl}/purchase/cancel`,
+    };
+  }
+  // Mobile
+  return {
+    success: `${VOPIConfig.scheme}://purchase/success`,
+    cancel: `${VOPIConfig.scheme}://purchase/cancel`,
+  };
+};

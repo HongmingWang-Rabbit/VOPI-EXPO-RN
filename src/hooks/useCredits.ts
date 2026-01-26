@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { vopiService } from '../services/vopi.service';
 import { CreditBalance, CreditPack, CostEstimate } from '../types/vopi.types';
 
@@ -7,22 +7,31 @@ export function useCredits() {
   const [packs, setPacks] = useState<CreditPack[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
 
   const fetchBalance = useCallback(async () => {
     try {
       const data = await vopiService.getBalance();
-      setBalance(data);
+      if (isMountedRef.current) {
+        setBalance(data);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch balance');
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch balance');
+      }
     }
   }, []);
 
   const fetchPacks = useCallback(async () => {
     try {
       const data = await vopiService.getPacks();
-      setPacks(data.packs);
+      if (isMountedRef.current) {
+        setPacks(data.packs);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch packs');
+      if (isMountedRef.current) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch packs');
+      }
     }
   }, []);
 
@@ -31,7 +40,9 @@ export function useCredits() {
       try {
         return await vopiService.estimateCost(videoDurationSeconds, frameCount);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to estimate cost');
+        if (isMountedRef.current) {
+          setError(err instanceof Error ? err.message : 'Failed to estimate cost');
+        }
         return null;
       }
     },
@@ -39,15 +50,34 @@ export function useCredits() {
   );
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    if (isMountedRef.current) {
+      setLoading(true);
+      setError(null);
+    }
     await Promise.all([fetchBalance(), fetchPacks()]);
-    setLoading(false);
+    if (isMountedRef.current) {
+      setLoading(false);
+    }
   }, [fetchBalance, fetchPacks]);
 
   useEffect(() => {
-    refresh();
-  }, []);
+    isMountedRef.current = true;
+
+    const loadData = async () => {
+      setLoading(true);
+      setError(null);
+      await Promise.all([fetchBalance(), fetchPacks()]);
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [fetchBalance, fetchPacks]);
 
   return {
     balance: balance?.balance ?? 0,

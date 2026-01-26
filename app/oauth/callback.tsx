@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import { VOPIConfig } from '../../src/config/vopi.config';
 import { storage } from '../../src/utils/storage';
+import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../src/theme';
 
 /**
  * OAuth callback page for web
@@ -14,17 +15,7 @@ export default function OAuthCallbackScreen() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (Platform.OS !== 'web') {
-      // This page is only for web
-      router.replace('/');
-      return;
-    }
-
-    handleOAuthCallback();
-  }, []);
-
-  const handleOAuthCallback = async () => {
+  const handleOAuthCallback = useCallback(async () => {
     try {
       const code = params.code as string;
       const state = params.state as string;
@@ -62,6 +53,7 @@ export default function OAuthCallbackScreen() {
           redirectUri,
           state: storedState,
           codeVerifier: storedCodeVerifier || undefined,
+          platform: Platform.OS,
           deviceInfo: {
             deviceName: 'Web Browser',
           },
@@ -92,10 +84,19 @@ export default function OAuthCallbackScreen() {
       // Redirect to home - force page reload to update auth state
       window.location.href = '/';
     } catch (err) {
-      console.error('OAuth callback error:', err);
       setError(err instanceof Error ? err.message : 'Authentication failed');
     }
-  };
+  }, [params.code, params.state, params.error]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      // This page is only for web
+      router.replace('/');
+      return;
+    }
+
+    handleOAuthCallback();
+  }, [handleOAuthCallback, router]);
 
   if (error) {
     return (
@@ -105,6 +106,7 @@ export default function OAuthCallbackScreen() {
         <Text
           style={styles.link}
           onPress={() => router.replace('/(auth)/login')}
+          accessibilityRole="link"
         >
           Back to Login
         </Text>
@@ -114,7 +116,7 @@ export default function OAuthCallbackScreen() {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator size="large" color="#007AFF" />
+      <ActivityIndicator size="large" color={colors.primary} />
       <Text style={styles.text}>Completing sign in...</Text>
     </View>
   );
@@ -125,29 +127,29 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    padding: 24,
+    backgroundColor: colors.white,
+    padding: spacing.xl,
   },
   text: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
+    marginTop: spacing.lg,
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
   },
   errorTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#FF3B30',
-    marginBottom: 8,
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.semibold,
+    color: colors.error,
+    marginBottom: spacing.sm,
   },
   errorMessage: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: spacing.xl,
   },
   link: {
-    fontSize: 16,
-    color: '#007AFF',
+    fontSize: fontSize.md,
+    color: colors.primary,
     textDecorationLine: 'underline',
   },
 });

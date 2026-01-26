@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { vopiService } from '../src/services/vopi.service';
 import { DownloadUrlsResponse, Job } from '../src/types/vopi.types';
 import { ResultsGallery } from '../src/components/product/ResultsGallery';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../src/theme';
 
 export default function ResultsScreen() {
   const router = useRouter();
@@ -14,20 +15,16 @@ export default function ResultsScreen() {
   const [job, setJob] = useState<Job | null>(null);
   const [downloadUrls, setDownloadUrls] = useState<DownloadUrlsResponse | null>(null);
 
-  useEffect(() => {
-    if (jobId) {
-      fetchResults();
-    }
-  }, [jobId]);
+  const fetchResults = useCallback(async () => {
+    if (!jobId) return;
 
-  const fetchResults = async () => {
     try {
       setLoading(true);
       setError(null);
 
       const [jobData, urlsData] = await Promise.all([
-        vopiService.getJob(jobId as string),
-        vopiService.getDownloadUrls(jobId as string),
+        vopiService.getJob(jobId),
+        vopiService.getDownloadUrls(jobId),
       ]);
 
       setJob(jobData);
@@ -37,7 +34,11 @@ export default function ResultsScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [jobId]);
+
+  useEffect(() => {
+    fetchResults();
+  }, [fetchResults]);
 
   const handleClose = () => {
     router.back();
@@ -47,7 +48,7 @@ export default function ResultsScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading results...</Text>
         </View>
       </SafeAreaView>
@@ -58,14 +59,23 @@ export default function ResultsScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Results</Text>
-          <TouchableOpacity onPress={handleClose}>
+          <Text style={styles.headerTitle} accessibilityRole="header">Results</Text>
+          <TouchableOpacity
+            onPress={handleClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close results"
+          >
             <Text style={styles.closeButton}>Close</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchResults}>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={fetchResults}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading results"
+          >
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -76,8 +86,12 @@ export default function ResultsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Results</Text>
-        <TouchableOpacity onPress={handleClose}>
+        <Text style={styles.headerTitle} accessibilityRole="header">Results</Text>
+        <TouchableOpacity
+          onPress={handleClose}
+          accessibilityRole="button"
+          accessibilityLabel="Done viewing results"
+        >
           <Text style={styles.closeButton}>Done</Text>
         </TouchableOpacity>
       </View>
@@ -105,24 +119,25 @@ export default function ResultsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
   },
   closeButton: {
-    color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '500',
+    color: colors.primary,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
   },
   loadingContainer: {
     flex: 1,
@@ -130,46 +145,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#666',
+    marginTop: spacing.lg,
+    fontSize: fontSize.md,
+    color: colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: spacing.xl,
   },
   errorText: {
-    fontSize: 16,
-    color: '#FF3B30',
+    fontSize: fontSize.md,
+    color: colors.error,
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   retryButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
   },
   retryButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
   metadataSection: {
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   productTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    marginBottom: spacing.sm,
+    color: colors.text,
   },
   productDescription: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
     lineHeight: 20,
   },
 });

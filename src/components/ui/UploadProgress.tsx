@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { UploadState } from '../../types/vopi.types';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../theme';
 
 interface UploadProgressProps {
   state: UploadState;
@@ -35,20 +36,35 @@ export function UploadProgress({ state, onCancel }: UploadProgressProps) {
   };
 
   const isActive = state.status === 'uploading' || state.status === 'processing';
+  const progressPercent = Math.round(getProgressValue() * 100);
 
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      accessibilityRole="progressbar"
+      accessibilityValue={{
+        min: 0,
+        max: 100,
+        now: progressPercent,
+        text: getStatusText(),
+      }}
+    >
       <Text style={styles.statusText}>{getStatusText()}</Text>
 
       {isActive && (
         <>
           <View style={styles.progressBar}>
             <View
-              style={[styles.progressFill, { width: `${getProgressValue() * 100}%` }]}
+              style={[styles.progressFill, { width: `${progressPercent}%` }]}
             />
           </View>
 
-          <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={onCancel}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel upload"
+          >
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
         </>
@@ -59,35 +75,35 @@ export function UploadProgress({ state, onCancel }: UploadProgressProps) {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    marginVertical: 16,
+    padding: spacing.lg,
+    backgroundColor: colors.backgroundSecondary,
+    borderRadius: borderRadius.lg,
+    marginVertical: spacing.lg,
   },
   statusText: {
-    fontSize: 14,
-    color: '#333',
-    marginBottom: 12,
+    fontSize: fontSize.sm,
+    color: colors.text,
+    marginBottom: spacing.md,
     textAlign: 'center',
   },
   progressBar: {
     height: 8,
-    backgroundColor: '#ddd',
-    borderRadius: 4,
+    backgroundColor: colors.borderDark,
+    borderRadius: borderRadius.sm,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#007AFF',
-    borderRadius: 4,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
   },
   cancelButton: {
-    marginTop: 12,
+    marginTop: spacing.md,
     alignItems: 'center',
   },
   cancelText: {
-    color: '#FF3B30',
-    fontSize: 14,
-    fontWeight: '500',
+    color: colors.error,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
   },
 });

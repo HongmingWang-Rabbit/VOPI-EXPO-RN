@@ -6,6 +6,8 @@ import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useCredits } from '../../src/hooks/useCredits';
 import { vopiService } from '../../src/services/vopi.service';
+import { getCheckoutUrls } from '../../src/config/vopi.config';
+import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
@@ -13,16 +15,17 @@ export default function SettingsScreen() {
 
   const handlePurchaseCredits = async (packType: string) => {
     try {
+      const checkoutUrls = getCheckoutUrls();
       const { checkoutUrl } = await vopiService.createCheckout(
         packType,
-        'vopi://purchase/success',
-        'vopi://purchase/cancel'
+        checkoutUrls.success,
+        checkoutUrls.cancel
       );
       await WebBrowser.openBrowserAsync(checkoutUrl);
       // Refresh credits after returning from checkout
       setTimeout(refresh, 2000);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to start checkout');
+    } catch {
+      Alert.alert('Error', 'Failed to start checkout. Please try again.');
     }
   };
 
@@ -40,7 +43,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Settings</Text>
+        <Text style={styles.headerTitle} accessibilityRole="header">Settings</Text>
       </View>
 
       <ScrollView style={styles.content}>
@@ -79,6 +82,8 @@ export default function SettingsScreen() {
               key={pack.packType}
               style={styles.packCard}
               onPress={() => handlePurchaseCredits(pack.packType)}
+              accessibilityRole="button"
+              accessibilityLabel={`Purchase ${pack.name} for $${pack.priceUsd.toFixed(2)}`}
             >
               <View>
                 <Text style={styles.packName}>{pack.name}</Text>
@@ -91,8 +96,13 @@ export default function SettingsScreen() {
 
         {/* Actions */}
         <View style={styles.section}>
-          <TouchableOpacity style={styles.actionButton} onPress={handleSignOut}>
-            <Ionicons name="log-out-outline" size={20} color="#FF3B30" />
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleSignOut}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out of your account"
+          >
+            <Ionicons name="log-out-outline" size={20} color={colors.error} />
             <Text style={styles.actionButtonText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
@@ -106,35 +116,36 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.white,
   },
   header: {
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: fontSize.xxl,
+    fontWeight: fontWeight.bold,
+    color: colors.text,
   },
   content: {
     flex: 1,
   },
   section: {
-    padding: 16,
+    padding: spacing.lg,
     paddingBottom: 0,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 12,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
     textTransform: 'uppercase',
   },
   card: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: colors.backgroundTertiary,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -142,27 +153,28 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: spacing.md,
   },
   avatarText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
+    color: colors.white,
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.semibold,
   },
   userInfo: {
     flex: 1,
   },
   userName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
     marginBottom: 2,
+    color: colors.text,
   },
   userEmail: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
   },
   balanceRow: {
     flexDirection: 'row',
@@ -171,53 +183,55 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   balanceLabel: {
-    fontSize: 16,
+    fontSize: fontSize.md,
+    color: colors.text,
   },
   balanceValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#007AFF',
+    fontSize: fontSize.xl,
+    fontWeight: fontWeight.bold,
+    color: colors.primary,
   },
   packCard: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: colors.backgroundTertiary,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: spacing.sm,
   },
   packName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
     marginBottom: 2,
+    color: colors.text,
   },
   packCredits: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
   },
   packPrice: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#34C759',
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.success,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff5f5',
-    padding: 16,
-    borderRadius: 12,
-    gap: 12,
+    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
+    gap: spacing.md,
   },
   actionButtonText: {
-    fontSize: 16,
-    color: '#FF3B30',
-    fontWeight: '500',
+    fontSize: fontSize.md,
+    color: colors.error,
+    fontWeight: fontWeight.medium,
   },
   version: {
     textAlign: 'center',
-    color: '#999',
-    fontSize: 12,
-    padding: 24,
+    color: colors.textTertiary,
+    fontSize: fontSize.xs,
+    padding: spacing.xl,
   },
 });

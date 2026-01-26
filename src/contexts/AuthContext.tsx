@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { VOPIConfig, getRedirectUri } from '../config/vopi.config';
 import { User } from '../types/vopi.types';
 import { storage } from '../utils/storage';
+import { decodeJWTPayload } from '../utils/strings';
 
 // Ensure web browser auth sessions are dismissed
 WebBrowser.maybeCompleteAuthSession();
@@ -30,7 +31,7 @@ const STORAGE_KEYS = {
   ACCESS_TOKEN: 'vopi_access_token',
   REFRESH_TOKEN: 'vopi_refresh_token',
   USER: 'vopi_user',
-};
+} as const;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>({
@@ -41,10 +42,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isRefreshing = useRef(false);
   const refreshPromise = useRef<Promise<string | null> | null>(null);
+  const isMounted = useRef(true);
 
-  // Load stored user on mount
+  // Cleanup on unmount
   useEffect(() => {
+    isMounted.current = true;
     loadStoredAuth();
+
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const safeSetState = useCallback((newState: AuthState | ((prev: AuthState) => AuthState)) => {
+    if (isMounted.current) {
+      setState(newState);
+    }
   }, []);
 
   const loadStoredAuth = async () => {
@@ -60,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Verify token is still valid by fetching fresh user data
         try {
           const freshUser = await fetchUserProfile(accessToken);
-          setState({
+          safeSetState({
             user: freshUser,
             isLoading: false,
             isAuthenticated: true,
@@ -71,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const newToken = await refreshAccessToken();
           if (newToken) {
             const freshUser = await fetchUserProfile(newToken);
-            setState({
+            safeSetState({
               user: freshUser,
               isLoading: false,
               isAuthenticated: true,
@@ -79,15 +92,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             // Refresh failed, clear auth
             await clearAuth();
-            setState({ user: null, isLoading: false, isAuthenticated: false });
+            safeSetState({ user: null, isLoading: false, isAuthenticated: false });
           }
         }
       } else {
-        setState({ user: null, isLoading: false, isAuthenticated: false });
+        safeSetState({ user: null, isLoading: false, isAuthenticated: false });
       }
-    } catch (error) {
-      console.error('Failed to load stored auth:', error);
-      setState({ user: null, isLoading: false, isAuthenticated: false });
+    } catch {
+      safeSetState({ user: null, isLoading: false, isAuthenticated: false });
     }
   };
 
@@ -122,30 +134,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
-  const signInWithProvider = async (provider: 'google' | 'apple') => {
+  const signInWithProvider = useCallback(async (provider: 'google' | 'apple') => {
     try {
-      setState(prev => ({ ...prev, isLoading: true }));
+      safeSetState((prev) => ({ ...prev, isLoading: true }));
 
       const redirectUri = getRedirectUri();
-      console.log('[Auth] Starting OAuth with provider:', provider);
-      console.log('[Auth] Redirect URI:', redirectUri);
-      console.log('[Auth] API URL:', VOPIConfig.apiUrl);
 
       // Step 1: Initialize OAuth
       const initResponse = await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/oauth/init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, redirectUri }),
+        body: JSON.stringify({ provider, redirectUri, platform: Platform.OS }),
       });
 
       if (!initResponse.ok) {
         const errorData = await initResponse.json().catch(() => ({}));
-        console.error('[Auth] OAuth init failed:', initResponse.status, errorData);
         throw new Error(errorData.message || `Failed to initialize OAuth (${initResponse.status})`);
       }
 
       const { authorizationUrl, state: oauthState, codeVerifier } = await initResponse.json();
-      console.log('[Auth] Got authorization URL, opening browser...');
 
       // Store OAuth state temporarily
       await storage.setItem('oauth_state', oauthState);
@@ -160,20 +167,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // On mobile, use WebBrowser
-      const result = await WebBrowser.openAuthSessionAsync(
-        authorizationUrl,
-        redirectUri
-      );
-
-      console.log('[Auth] Browser result type:', result.type);
+      const result = await WebBrowser.openAuthSessionAsync(authorizationUrl, redirectUri);
 
       if (result.type !== 'success' || !result.url) {
-        console.log('[Auth] OAuth cancelled or failed:', result.type);
-        setState(prev => ({ ...prev, isLoading: false }));
+        safeSetState((prev) => ({ ...prev, isLoading: false }));
         return;
       }
-
-      console.log('[Auth] Got redirect URL:', result.url);
 
       // Step 3: Extract code from redirect URL
       const url = new URL(result.url);
@@ -195,7 +194,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Step 4: Exchange code for tokens
-      console.log('[Auth] Exchanging code for tokens...');
       const callbackResponse = await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/oauth/callback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           redirectUri,
           state: storedState,
           codeVerifier: storedCodeVerifier || undefined,
+          platform: Platform.OS,
           deviceInfo: {
             deviceName: `Expo App`,
           },
@@ -213,11 +212,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!callbackResponse.ok) {
         const error = await callbackResponse.json().catch(() => ({}));
-        console.error('[Auth] Token exchange failed:', callbackResponse.status, error);
         throw new Error(error.message || `Failed to exchange code for tokens (${callbackResponse.status})`);
       }
-
-      console.log('[Auth] Token exchange successful');
 
       const { accessToken, refreshToken, user } = await callbackResponse.json();
 
@@ -235,40 +231,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         storage.deleteItem('oauth_provider'),
       ]);
 
-      setState({
+      safeSetState({
         user,
         isLoading: false,
         isAuthenticated: true,
       });
     } catch (error) {
-      console.error('Sign in error:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      safeSetState((prev) => ({ ...prev, isLoading: false }));
       throw error;
     }
-  };
+  }, [safeSetState]);
 
-  const signInWithGoogle = useCallback(() => signInWithProvider('google'), []);
-  const signInWithApple = useCallback(() => signInWithProvider('apple'), []);
+  const signInWithGoogle = useCallback(() => signInWithProvider('google'), [signInWithProvider]);
+  const signInWithApple = useCallback(() => signInWithProvider('apple'), [signInWithProvider]);
 
   const signOut = useCallback(async () => {
     try {
       const refreshToken = await storage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 
       if (refreshToken) {
-        // Revoke token on server
-        await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/logout`, {
+        // Revoke token on server (fire and forget)
+        fetch(`${VOPIConfig.apiUrl}/api/v1/auth/logout`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ refreshToken }),
+        }).catch(() => {
+          // Ignore logout errors
         });
       }
-    } catch (error) {
-      console.warn('Failed to revoke token:', error);
     } finally {
       await clearAuth();
-      setState({ user: null, isLoading: false, isAuthenticated: false });
+      safeSetState({ user: null, isLoading: false, isAuthenticated: false });
     }
-  }, []);
+  }, [safeSetState]);
 
   const clearAuth = async () => {
     await Promise.all([
@@ -312,8 +307,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ]);
 
         return accessToken;
-      } catch (error) {
-        console.error('Token refresh failed:', error);
+      } catch {
         return null;
       } finally {
         isRefreshing.current = false;
@@ -331,9 +325,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return null;
     }
 
-    // Check if token is expired
-    try {
-      const payload = JSON.parse(atob(accessToken.split('.')[1]));
+    // Check if token is expired using safe decoder
+    const payload = decodeJWTPayload(accessToken);
+    if (payload && typeof payload.exp === 'number') {
       const expiresAt = payload.exp * 1000;
       const now = Date.now();
       const bufferMs = 60 * 1000; // 1 minute buffer
@@ -342,22 +336,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Token is expired or about to expire, refresh it
         return await refreshAccessToken();
       }
-
-      return accessToken;
-    } catch {
-      // If we can't decode the token, try to refresh
-      return await refreshAccessToken();
     }
+
+    return accessToken;
   }, []);
 
   const refreshUser = useCallback(async () => {
     const accessToken = await getAccessToken();
     if (accessToken) {
       const freshUser = await fetchUserProfile(accessToken);
-      setState(prev => ({ ...prev, user: freshUser }));
+      safeSetState((prev) => ({ ...prev, user: freshUser }));
       await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(freshUser));
     }
-  }, [getAccessToken]);
+  }, [getAccessToken, safeSetState]);
 
   return (
     <AuthContext.Provider

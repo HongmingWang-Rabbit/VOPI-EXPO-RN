@@ -1,7 +1,8 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { vopiService } from '../services/vopi.service';
 import { VOPIConfig } from '../config/vopi.config';
-import { UploadState, Job } from '../types/vopi.types';
+import { UploadState } from '../types/vopi.types';
+import { capitalizeFirst } from '../utils/strings';
 
 interface VideoFile {
   uri: string;
@@ -14,6 +15,23 @@ export function useVOPIUpload() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isCancelledRef = useRef(false);
   const currentJobIdRef = useRef<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      cleanup();
+    };
+  }, []);
+
+  const safeSetState = useCallback((newState: UploadState) => {
+    if (isMountedRef.current) {
+      setState(newState);
+    }
+  }, []);
 
   const cleanup = useCallback(() => {
     if (pollingRef.current) {
@@ -29,7 +47,7 @@ export function useVOPIUpload() {
 
       try {
         // Step 1: Get presigned URL
-        setState({ status: 'uploading', progress: 0 });
+        safeSetState({ status: 'uploading', progress: 0 });
 
         const filename = video.fileName || 'video.mp4';
         const contentType = video.mimeType || 'video/mp4';
@@ -39,7 +57,7 @@ export function useVOPIUpload() {
         if (isCancelledRef.current) return;
 
         // Step 2: Upload to S3
-        setState({ status: 'uploading', progress: 0.5 });
+        safeSetState({ status: 'uploading', progress: 0.5 });
 
         await vopiService.uploadFile(
           presign.uploadUrl,
@@ -47,7 +65,7 @@ export function useVOPIUpload() {
           contentType,
           (progress) => {
             if (!isCancelledRef.current) {
-              setState({ status: 'uploading', progress });
+              safeSetState({ status: 'uploading', progress });
             }
           }
         );
@@ -55,23 +73,23 @@ export function useVOPIUpload() {
         if (isCancelledRef.current) return;
 
         // Step 3: Create job
-        setState({ status: 'processing', jobId: '', progress: 0, step: 'Creating job...' });
+        safeSetState({ status: 'processing', jobId: '', progress: 0, step: 'Creating job...' });
 
         const job = await vopiService.createJob(presign.publicUrl, { stackId });
         currentJobIdRef.current = job.id;
 
         if (isCancelledRef.current) {
-          await vopiService.cancelJob(job.id);
+          await vopiService.cancelJob(job.id).catch(() => {});
           return;
         }
 
-        setState({ status: 'processing', jobId: job.id, progress: 0, step: 'Starting...' });
+        safeSetState({ status: 'processing', jobId: job.id, progress: 0, step: 'Starting...' });
 
         // Step 4: Poll for completion
         let attempts = 0;
 
         const pollStatus = async () => {
-          if (isCancelledRef.current) {
+          if (isCancelledRef.current || !isMountedRef.current) {
             cleanup();
             return;
           }
@@ -79,14 +97,14 @@ export function useVOPIUpload() {
           attempts++;
           if (attempts > VOPIConfig.maxPollingAttempts) {
             cleanup();
-            setState({ status: 'error', message: 'Job timed out' });
+            safeSetState({ status: 'error', message: 'Job timed out' });
             return;
           }
 
           try {
             const status = await vopiService.getJobStatus(job.id);
 
-            setState({
+            safeSetState({
               status: 'processing',
               jobId: job.id,
               progress: status.progress?.percentage || 0,
@@ -98,10 +116,9 @@ export function useVOPIUpload() {
               await handleJobComplete(job.id);
             } else if (status.status === 'failed' || status.status === 'cancelled') {
               cleanup();
-              setState({ status: 'error', message: `Job ${status.status}` });
+              safeSetState({ status: 'error', message: `Job ${status.status}` });
             }
-          } catch (error) {
-            console.warn('Polling error:', error);
+          } catch {
             // Continue polling on transient errors
           }
         };
@@ -112,10 +129,10 @@ export function useVOPIUpload() {
       } catch (error) {
         cleanup();
         const message = error instanceof Error ? error.message : 'Unknown error';
-        setState({ status: 'error', message });
+        safeSetState({ status: 'error', message });
       }
     },
-    [cleanup]
+    [cleanup, safeSetState]
   );
 
   const handleJobComplete = async (jobId: string) => {
@@ -125,13 +142,13 @@ export function useVOPIUpload() {
         vopiService.getDownloadUrls(jobId),
       ]);
 
-      setState({
+      safeSetState({
         status: 'completed',
         job,
         downloadUrls,
       });
     } catch {
-      setState({
+      safeSetState({
         status: 'error',
         message: 'Failed to fetch results',
       });
@@ -143,22 +160,18 @@ export function useVOPIUpload() {
     cleanup();
 
     if (currentJobIdRef.current) {
-      try {
-        await vopiService.cancelJob(currentJobIdRef.current);
-      } catch {
-        // Ignore cancellation errors
-      }
+      await vopiService.cancelJob(currentJobIdRef.current).catch(() => {});
     }
 
-    setState({ status: 'cancelled' });
-  }, [cleanup]);
+    safeSetState({ status: 'cancelled' });
+  }, [cleanup, safeSetState]);
 
   const reset = useCallback(() => {
     cleanup();
     isCancelledRef.current = false;
     currentJobIdRef.current = null;
-    setState({ status: 'idle' });
-  }, [cleanup]);
+    safeSetState({ status: 'idle' });
+  }, [cleanup, safeSetState]);
 
   return {
     state,
@@ -166,8 +179,4 @@ export function useVOPIUpload() {
     cancel,
     reset,
   };
-}
-
-function capitalizeFirst(str: string): string {
-  return str.charAt(0).toUpperCase() + str.slice(1).replace(/_/g, ' ');
 }
