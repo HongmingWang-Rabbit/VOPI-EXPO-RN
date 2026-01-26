@@ -56,43 +56,87 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const loadStoredAuth = async () => {
     try {
-      const [accessToken, userJson] = await Promise.all([
+      const [accessToken, refreshToken, userJson] = await Promise.all([
         storage.getItem(STORAGE_KEYS.ACCESS_TOKEN),
+        storage.getItem(STORAGE_KEYS.REFRESH_TOKEN),
         storage.getItem(STORAGE_KEYS.USER),
       ]);
 
-      if (accessToken && userJson) {
-        const user = JSON.parse(userJson) as User;
+      if (__DEV__) {
+        console.log('[Auth] Loading stored auth:', {
+          hasAccessToken: !!accessToken,
+          hasRefreshToken: !!refreshToken,
+          hasUser: !!userJson,
+        });
+      }
 
-        // Verify token is still valid by fetching fresh user data
-        try {
-          const freshUser = await fetchUserProfile(accessToken);
-          safeSetState({
-            user: freshUser,
-            isLoading: false,
-            isAuthenticated: true,
-          });
-          await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(freshUser));
-        } catch {
-          // Token might be expired, try refresh
+      // No stored credentials - user needs to sign in
+      if (!accessToken || !userJson) {
+        safeSetState({ user: null, isLoading: false, isAuthenticated: false });
+        return;
+      }
+
+      const storedUser = JSON.parse(userJson) as User;
+
+      // Restore session immediately with stored user (optimistic)
+      // This prevents logout on network issues
+      safeSetState({
+        user: storedUser,
+        isLoading: false,
+        isAuthenticated: true,
+      });
+
+      // Try to refresh user data in the background
+      try {
+        const freshUser = await fetchUserProfile(accessToken);
+        safeSetState({
+          user: freshUser,
+          isLoading: false,
+          isAuthenticated: true,
+        });
+        await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(freshUser));
+      } catch (error) {
+        if (__DEV__) {
+          console.log('[Auth] Failed to fetch fresh user, checking if token expired:', error);
+        }
+
+        // Check if token is expired (401) vs network error
+        const isAuthError = error instanceof Error &&
+          (error.message.includes('401') || error.message.includes('Unauthorized'));
+
+        if (isAuthError && refreshToken) {
+          // Token expired - try to refresh
           const newToken = await refreshAccessToken();
           if (newToken) {
-            const freshUser = await fetchUserProfile(newToken);
-            safeSetState({
-              user: freshUser,
-              isLoading: false,
-              isAuthenticated: true,
-            });
+            try {
+              const freshUser = await fetchUserProfile(newToken);
+              safeSetState({
+                user: freshUser,
+                isLoading: false,
+                isAuthenticated: true,
+              });
+              await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(freshUser));
+            } catch {
+              // Refresh worked but profile fetch failed - keep stored user
+              if (__DEV__) {
+                console.log('[Auth] Token refreshed but profile fetch failed, keeping stored user');
+              }
+            }
           } else {
-            // Refresh failed, clear auth
+            // Refresh token also invalid - clear auth
+            if (__DEV__) {
+              console.log('[Auth] Refresh token invalid, clearing auth');
+            }
             await clearAuth();
             safeSetState({ user: null, isLoading: false, isAuthenticated: false });
           }
         }
-      } else {
-        safeSetState({ user: null, isLoading: false, isAuthenticated: false });
+        // For network errors, keep the stored session (already set above)
       }
-    } catch {
+    } catch (error) {
+      if (__DEV__) {
+        console.error('[Auth] Error loading stored auth:', error);
+      }
       safeSetState({ user: null, isLoading: false, isAuthenticated: false });
     }
   };
