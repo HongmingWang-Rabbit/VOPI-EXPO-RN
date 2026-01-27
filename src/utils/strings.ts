@@ -40,3 +40,18 @@ export function formatDuration(seconds: number): string {
   const secs = seconds % 60;
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
+
+/**
+ * Safely format a date string, returning a fallback if invalid
+ */
+export function formatDate(dateString: string): string {
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) {
+      return 'Unknown date';
+    }
+    return date.toLocaleDateString();
+  } catch {
+    return 'Unknown date';
+  }
+}

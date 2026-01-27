@@ -1,6 +1,7 @@
 import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { colors } from '../../src/theme';
 
 export default function TabLayout() {
   const { isAuthenticated } = useAuth();
@@ -14,7 +15,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#007AFF',
+        tabBarActiveTintColor: colors.primary,
         tabBarStyle: {
           borderTopWidth: 0,
           elevation: 0,

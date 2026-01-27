@@ -19,6 +19,7 @@ interface EnvConfig {
   requestTimeout: number;
   pollingInterval: number;
   maxPollingAttempts: number;
+  maxRecordingDuration: number;
 }
 
 const extra = Constants.expoConfig?.extra ?? {};
@@ -34,6 +35,7 @@ const defaults: EnvConfig = {
   requestTimeout: 30000, // 30 seconds
   pollingInterval: 3000, // 3 seconds
   maxPollingAttempts: 200, // ~10 minutes max
+  maxRecordingDuration: 60, // 60 seconds
 };
 
 export const env: EnvConfig = {
@@ -46,14 +48,17 @@ export const env: EnvConfig = {
   requestTimeout: extra.requestTimeout ?? defaults.requestTimeout,
   pollingInterval: extra.pollingInterval ?? defaults.pollingInterval,
   maxPollingAttempts: extra.maxPollingAttempts ?? defaults.maxPollingAttempts,
+  maxRecordingDuration: extra.maxRecordingDuration ?? defaults.maxRecordingDuration,
 };
 
 // Validate required configuration in production
 if (!__DEV__) {
   const requiredKeys: (keyof EnvConfig)[] = ['apiUrl', 'webUrl'];
-  for (const key of requiredKeys) {
-    if (!env[key]) {
-      console.error(`Missing required environment variable: ${key}`);
-    }
+  const missingKeys = requiredKeys.filter((key) => !env[key]);
+  if (missingKeys.length > 0) {
+    const errorMessage = `Missing required environment variables: ${missingKeys.join(', ')}`;
+    console.error(errorMessage);
+    // In production, throw to prevent app from running with invalid config
+    throw new Error(errorMessage);
   }
 }

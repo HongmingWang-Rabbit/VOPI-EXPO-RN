@@ -1,17 +1,30 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, AppState } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import Constants from 'expo-constants';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useCredits } from '../../src/hooks/useCredits';
 import { vopiService } from '../../src/services/vopi.service';
 import { getCheckoutUrls } from '../../src/config/vopi.config';
 import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
 
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
+
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { balance, packs, refresh } = useCredits();
+  const isCheckoutInProgressRef = useRef(false);
+
+  // Refresh credits when app returns to foreground after checkout
+  const handleAppStateChange = useCallback((nextAppState: string) => {
+    if (nextAppState === 'active' && isCheckoutInProgressRef.current) {
+      isCheckoutInProgressRef.current = false;
+      // Refresh credits when returning from checkout
+      refresh();
+    }
+  }, [refresh]);
 
   const handlePurchaseCredits = async (packType: string) => {
     try {
@@ -21,10 +34,21 @@ export default function SettingsScreen() {
         checkoutUrls.success,
         checkoutUrls.cancel
       );
+
+      // Track that checkout is in progress
+      isCheckoutInProgressRef.current = true;
+
+      // Listen for app state changes
+      const subscription = AppState.addEventListener('change', handleAppStateChange);
+
       await WebBrowser.openBrowserAsync(checkoutUrl);
-      // Refresh credits after returning from checkout
-      setTimeout(refresh, 2000);
+
+      // Clean up listener and refresh credits
+      subscription.remove();
+      isCheckoutInProgressRef.current = false;
+      refresh();
     } catch {
+      isCheckoutInProgressRef.current = false;
       Alert.alert('Error', 'Failed to start checkout. Please try again.');
     }
   };
@@ -107,7 +131,7 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.version}>VOPI v1.0.0</Text>
+        <Text style={styles.version}>VOPI v{APP_VERSION}</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -218,7 +242,7 @@ const styles = StyleSheet.create({
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff5f5',
+    backgroundColor: colors.errorLight,
     padding: spacing.lg,
     borderRadius: borderRadius.lg,
     gap: spacing.md,

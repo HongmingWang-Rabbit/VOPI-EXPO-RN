@@ -20,6 +20,9 @@ export const VOPIConfig = {
   // Polling
   pollingInterval: env.pollingInterval,
   maxPollingAttempts: env.maxPollingAttempts,
+
+  // Recording
+  maxRecordingDuration: env.maxRecordingDuration,
 } as const;
 
 // OAuth redirect URI - platform specific

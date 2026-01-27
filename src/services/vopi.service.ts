@@ -1,9 +1,11 @@
-import * as FileSystem from 'expo-file-system';
+import { File } from 'expo-file-system';
+import { fetch as expoFetch } from 'expo/fetch';
 import { apiClient } from './api.client';
 import { VOPIConfig } from '../config/vopi.config';
 import {
   PresignResponse,
   Job,
+  JobConfig,
   JobStatus,
   DownloadUrlsResponse,
   CreditBalance,
@@ -35,11 +37,19 @@ export const vopiService = {
     }),
 
   // Uploads
-  getPresignedUrl: (filename: string, contentType = 'video/mp4') =>
-    apiClient.post<PresignResponse>('/api/v1/uploads/presign', {
+  getPresignedUrl: async (filename: string, contentType = 'video/mp4') => {
+    if (__DEV__) {
+      console.log('[VOPI] Getting presigned URL:', { filename, contentType });
+    }
+    const result = await apiClient.post<PresignResponse>('/api/v1/uploads/presign', {
       filename,
       contentType,
-    }),
+    });
+    if (__DEV__) {
+      console.log('[VOPI] Presigned URL received:', { hasUploadUrl: !!result.uploadUrl });
+    }
+    return result;
+  },
 
   uploadFile: async (
     uploadUrl: string,
@@ -47,57 +57,108 @@ export const vopiService = {
     contentType: string,
     onProgress?: (progress: number) => void
   ): Promise<void> => {
-    // Get file info
-    const fileInfo = await FileSystem.getInfoAsync(fileUri);
-    if (!fileInfo.exists) {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1000;
+
+    if (__DEV__) {
+      console.log('[VOPI] Starting file upload:', { fileUri, contentType });
+    }
+
+    // Create file reference using new expo-file-system API
+    const file = new File(fileUri);
+
+    // Check if file exists
+    if (!file.exists) {
       throw new Error('File not found');
     }
 
-    // Read file as base64 and upload using fetch
-    const fileContent = await FileSystem.readAsStringAsync(fileUri, {
-      encoding: 'base64',
-    });
-
-    // Convert base64 to blob
-    const binaryString = atob(fileContent);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
+    // Validate file size (reject empty or suspiciously small files)
+    const fileSize = file.size;
+    if (fileSize === 0) {
+      throw new Error('File is empty - recording may have failed');
     }
-    const blob = new Blob([bytes], { type: contentType });
+    if (fileSize < 1000) {
+      throw new Error('File appears to be corrupted (too small)');
+    }
 
-    // Upload to S3 with timeout
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), VOPIConfig.uploadTimeout);
+    if (__DEV__) {
+      console.log('[VOPI] File validated:', { size: fileSize });
+    }
 
-    try {
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': contentType,
-        },
-        body: blob,
-        signal: controller.signal,
-      });
+    // Upload to S3 with retry logic using expo/fetch with File object directly
+    let lastError: Error | null = null;
 
-      if (!uploadResponse.ok) {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), VOPIConfig.uploadTimeout);
+
+      try {
+        // Use expo/fetch which supports File objects natively
+        const uploadResponse = await expoFetch(uploadUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': contentType,
+          },
+          body: file,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (uploadResponse.ok) {
+          if (__DEV__) {
+            console.log('[VOPI] File upload completed successfully');
+          }
+          onProgress?.(1);
+          return;
+        }
+
+        // Retry on 5xx server errors
+        if (uploadResponse.status >= 500 && attempt < MAX_RETRIES - 1) {
+          if (__DEV__) {
+            console.warn('[VOPI] Upload failed, retrying:', { status: uploadResponse.status, attempt: attempt + 1 });
+          }
+          lastError = new Error(`Upload failed with status ${uploadResponse.status}`);
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * Math.pow(2, attempt)));
+          continue;
+        }
+
+        if (__DEV__) {
+          console.error('[VOPI] Upload failed permanently:', { status: uploadResponse.status });
+        }
         throw new Error(`Upload failed with status ${uploadResponse.status}`);
-      }
+      } catch (error) {
+        clearTimeout(timeoutId);
 
-      onProgress?.(1);
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Upload timed out - please try again with a smaller file or better connection');
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error('Upload timed out - please try again with a smaller file or better connection');
+        }
+
+        // Retry on network errors
+        if (error instanceof TypeError && attempt < MAX_RETRIES - 1) {
+          lastError = new Error('Network error during upload');
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * Math.pow(2, attempt)));
+          continue;
+        }
+
+        throw error;
       }
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
     }
+
+    throw lastError ?? new Error('Upload failed after retries');
   },
 
   // Jobs
-  createJob: (videoUrl: string, config?: { stackId?: string }) =>
-    apiClient.post<Job>('/api/v1/jobs', { videoUrl, config }),
+  createJob: async (videoUrl: string, config?: JobConfig) => {
+    if (__DEV__) {
+      console.log('[VOPI] Creating job:', { videoUrl: videoUrl.slice(0, 50) + '...', config });
+    }
+    const result = await apiClient.post<Job>('/api/v1/jobs', { videoUrl, config });
+    if (__DEV__) {
+      console.log('[VOPI] Job created:', { jobId: result.id, status: result.status });
+    }
+    return result;
+  },
 
   getJob: (jobId: string) => apiClient.get<Job>(`/api/v1/jobs/${jobId}`),
 

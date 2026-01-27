@@ -6,6 +6,14 @@ export interface PresignResponse {
   expiresIn: number;
 }
 
+// Job Config
+export interface JobConfig {
+  stackId?: string;
+  frameCount?: number;
+  quality?: 'low' | 'medium' | 'high';
+  [key: string]: unknown; // Allow additional properties
+}
+
 // Job
 export type JobStatusType =
   | 'pending'
@@ -31,7 +39,7 @@ export interface Job {
   id: string;
   status: JobStatusType;
   videoUrl: string;
-  config?: Record<string, unknown>;
+  config?: JobConfig;
   progress?: JobProgress;
   result?: {
     variantsDiscovered?: number;

@@ -3,9 +3,13 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import { VOPIConfig } from '../../src/config/vopi.config';
-import { storage } from '../../src/utils/storage';
-import { STORAGE_KEYS } from '../../src/constants/storage';
 import { colors, spacing, fontSize, fontWeight } from '../../src/theme';
+import {
+  validateOAuthState,
+  exchangeOAuthCode,
+  storeOAuthTokens,
+  cleanupOAuthState,
+} from '../../src/utils/oauth';
 
 /**
  * OAuth callback page for web
@@ -32,76 +36,33 @@ export default function OAuthCallbackScreen() {
         return;
       }
 
-      // Retrieve stored OAuth state
-      const storedState = await storage.getItem(STORAGE_KEYS.OAUTH_STATE);
-      const storedCodeVerifier = await storage.getItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER);
-      const storedProvider = await storage.getItem(STORAGE_KEYS.OAUTH_PROVIDER);
-
-      // Validate state - must exist and match
-      if (!storedState || !state || state !== storedState) {
-        setError('OAuth state mismatch - CSRF protection failed. Please try again.');
+      // Validate OAuth state
+      const validation = await validateOAuthState(state);
+      if (!validation.isValid) {
+        setError(validation.error || 'OAuth validation failed');
         return;
-      }
-
-      // Validate provider exists
-      if (!storedProvider) {
-        setError('OAuth session expired - please try again');
-        return;
-      }
-
-      // Build callback request body
-      const redirectUri = `${VOPIConfig.webUrl}/oauth/callback`;
-      const callbackBody: Record<string, unknown> = {
-        provider: storedProvider,
-        code,
-        redirectUri,
-        state: storedState,
-        platform: Platform.OS,
-        deviceInfo: {
-          deviceName: 'Web Browser',
-        },
-      };
-
-      // Include codeVerifier if available (for PKCE flow)
-      if (storedCodeVerifier) {
-        callbackBody.codeVerifier = storedCodeVerifier;
-        callbackBody.code_verifier = storedCodeVerifier; // Also send snake_case for backend compatibility
       }
 
       // Exchange code for tokens
-      const callbackResponse = await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/oauth/callback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(callbackBody),
+      const redirectUri = `${VOPIConfig.webUrl}/oauth/callback`;
+      const tokens = await exchangeOAuthCode({
+        code,
+        redirectUri,
+        provider: validation.storedProvider!,
+        state: validation.storedState!,
+        codeVerifier: validation.storedCodeVerifier,
       });
 
-      if (!callbackResponse.ok) {
-        const errorData = await callbackResponse.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Failed to exchange code for tokens');
-      }
+      // Store tokens and clean up
+      await storeOAuthTokens(tokens);
+      await cleanupOAuthState();
 
-      const { accessToken, refreshToken, user } = await callbackResponse.json();
-
-      // Store tokens and user
-      await Promise.all([
-        storage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
-        storage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken),
-        storage.setItem(STORAGE_KEYS.USER, JSON.stringify(user)),
-      ]);
-
-      // Clean up OAuth state
-      await Promise.all([
-        storage.deleteItem(STORAGE_KEYS.OAUTH_STATE),
-        storage.deleteItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER),
-        storage.deleteItem(STORAGE_KEYS.OAUTH_PROVIDER),
-      ]);
-
-      // Redirect to home - force page reload to update auth state
-      window.location.href = '/';
+      // Redirect to home - AuthProvider will detect the stored tokens
+      router.replace('/(tabs)');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
     }
-  }, [params.code, params.state, params.error]);
+  }, [params.code, params.state, params.error, router]);
 
   useEffect(() => {
     if (Platform.OS !== 'web') {

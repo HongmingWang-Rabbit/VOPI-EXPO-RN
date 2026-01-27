@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, memo } from 'react';
 import {
   View,
   Text,
@@ -17,12 +17,20 @@ interface ResultsGalleryProps {
   productName?: string;
 }
 
-export function ResultsGallery({ images, onImagePress, productName }: ResultsGalleryProps) {
+function ResultsGalleryComponent({ images, onImagePress, productName }: ResultsGalleryProps) {
   const { width: screenWidth } = useWindowDimensions();
   const imageSize = (screenWidth - 48) / 2;
 
-  const variants = Object.keys(images);
-  const totalImages = variants.reduce((sum, v) => sum + Object.keys(images[v]).length, 0);
+  // Memoize processed image data to avoid recalculating on each render
+  const { variants, totalImages, imagesByVariant } = useMemo(() => {
+    const variantKeys = Object.keys(images);
+    const total = variantKeys.reduce((sum, v) => sum + Object.keys(images[v]).length, 0);
+    const byVariant = variantKeys.map((variant) => ({
+      variant,
+      images: Object.entries(images[variant]),
+    }));
+    return { variants: variantKeys, totalImages: total, imagesByVariant: byVariant };
+  }, [images]);
 
   if (variants.length === 0) {
     return (
@@ -38,28 +46,28 @@ export function ResultsGallery({ images, onImagePress, productName }: ResultsGal
       showsVerticalScrollIndicator={false}
       accessibilityLabel={`Product image gallery with ${totalImages} images in ${variants.length} categories`}
     >
-      {variants.map((variant, variantIndex) => (
+      {imagesByVariant.map(({ variant, images: variantImages }) => (
         <View key={variant} style={styles.section}>
           <Text style={styles.sectionTitle} accessibilityRole="header">
             {capitalizeFirst(variant)}
           </Text>
 
           <View style={styles.grid} accessibilityRole="list">
-            {Object.entries(images[variant]).map(([version, url], imageIndex) => (
+            {variantImages.map(([version, url]) => (
               <TouchableOpacity
                 key={version}
                 style={[styles.imageContainer, { width: imageSize }]}
                 onPress={() => onImagePress?.(url)}
                 activeOpacity={0.8}
                 accessibilityRole="button"
-                accessibilityLabel={`${productName ? productName + ', ' : ''}${capitalizeFirst(variant)} style, ${capitalizeFirst(version)} version. Tap to view full size.`}
-                accessibilityHint="Opens the image in full screen"
+                accessibilityLabel={`${productName ? productName + ' - ' : ''}${capitalizeFirst(variant)} style, ${capitalizeFirst(version)} version. Image ${variantImages.indexOf([version, url]) + 1} of ${variantImages.length} in this category.`}
+                accessibilityHint="Double tap to view full size image"
               >
                 <Image
                   source={{ uri: url }}
                   style={[styles.image, { width: imageSize, height: imageSize }]}
                   resizeMode="cover"
-                  accessibilityLabel={`Product image: ${capitalizeFirst(variant)} ${capitalizeFirst(version)}`}
+                  accessibilityLabel={`${productName ? productName + ': ' : 'Product image: '}${capitalizeFirst(variant)} ${capitalizeFirst(version)}`}
                   accessibilityIgnoresInvertColors
                 />
                 <Text style={styles.versionLabel}>
@@ -73,6 +81,8 @@ export function ResultsGallery({ images, onImagePress, productName }: ResultsGal
     </ScrollView>
   );
 }
+
+export const ResultsGallery = memo(ResultsGalleryComponent);
 
 const styles = StyleSheet.create({
   container: {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo, useCallback } from 'react';
 import { TouchableOpacity, Text, StyleSheet, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../theme';
@@ -8,8 +8,8 @@ interface VideoPickerProps {
   disabled?: boolean;
 }
 
-export function VideoPicker({ onSelect, disabled }: VideoPickerProps) {
-  const handlePress = async () => {
+function VideoPickerComponent({ onSelect, disabled }: VideoPickerProps) {
+  const handlePress = useCallback(async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
@@ -38,7 +38,7 @@ export function VideoPicker({ onSelect, disabled }: VideoPickerProps) {
     } catch {
       Alert.alert('Error', 'Failed to access video library. Please try again.');
     }
-  };
+  }, [onSelect]);
 
   return (
     <TouchableOpacity
@@ -76,3 +76,5 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
   },
 });
+
+export const VideoPicker = memo(VideoPickerComponent);

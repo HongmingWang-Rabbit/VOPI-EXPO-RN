@@ -6,6 +6,12 @@ import { User } from '../types/vopi.types';
 import { storage } from '../utils/storage';
 import { STORAGE_KEYS } from '../constants/storage';
 import { decodeJWTPayload } from '../utils/strings';
+import {
+  validateOAuthState,
+  exchangeOAuthCode,
+  storeOAuthTokens,
+  cleanupOAuthState,
+} from '../utils/oauth';
 
 // Ensure web browser auth sessions are dismissed
 WebBrowser.maybeCompleteAuthSession();
@@ -39,6 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isMounted = useRef(true);
 
   // Cleanup on unmount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     isMounted.current = true;
     loadStoredAuth();
@@ -96,13 +103,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(freshUser));
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
         if (__DEV__) {
-          console.log('[Auth] Failed to fetch fresh user, checking if token expired:', error);
+          console.log('[Auth] Failed to fetch fresh user:', {
+            error: errorMessage,
+            errorType: error instanceof Error ? error.name : typeof error,
+          });
         }
 
-        // Check if token is expired (401) vs network error
-        const isAuthError = error instanceof Error &&
-          (error.message.includes('401') || error.message.includes('Unauthorized'));
+        // Check if token is expired (401) vs server error (500) vs network error
+        const isAuthError = errorMessage.includes('401') || errorMessage.includes('Unauthorized');
+        const isServerError = errorMessage.includes('500') || errorMessage.includes('502') ||
+                              errorMessage.includes('503') || errorMessage.includes('504');
+
+        if (__DEV__) {
+          console.log('[Auth] Error classification:', {
+            isAuthError,
+            isServerError,
+            willAttemptRefresh: isAuthError && !!refreshToken,
+            willKeepStoredSession: !isAuthError,
+          });
+        }
 
         if (isAuthError && refreshToken) {
           // Token expired - try to refresh
@@ -142,16 +164,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const fetchUserProfile = async (accessToken: string): Promise<User> => {
-    const response = await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/me`, {
+    const apiUrl = `${VOPIConfig.apiUrl}/api/v1/auth/me`;
+
+    if (__DEV__) {
+      // Log token preview for debugging (first 10 and last 10 chars)
+      const tokenPreview = accessToken.length > 20
+        ? `${accessToken.slice(0, 10)}...${accessToken.slice(-10)}`
+        : '[short token]';
+
+      // Decode JWT payload to see claims
+      const payload = decodeJWTPayload(accessToken);
+      const tokenInfo: Record<string, unknown> = {
+        url: apiUrl,
+        tokenPreview,
+        tokenLength: accessToken.length,
+      };
+
+      if (payload) {
+        const expNum = typeof payload.exp === 'number' ? payload.exp : null;
+        tokenInfo.payload = {
+          sub: payload.sub,
+          exp: payload.exp,
+          iat: payload.iat,
+          type: payload.type, // Should be 'access', NOT 'refresh'
+          expiresIn: expNum ? `${Math.round((expNum * 1000 - Date.now()) / 1000)}s` : 'unknown',
+          isExpired: expNum ? expNum * 1000 < Date.now() : 'unknown',
+        };
+
+        // CRITICAL: Warn if wrong token type
+        if (payload.type !== 'access') {
+          console.error('[Auth] ⚠️ WRONG TOKEN TYPE! Expected "access", got:', payload.type);
+        }
+      } else {
+        tokenInfo.payloadError = 'Could not decode JWT payload';
+      }
+
+      console.log('[Auth] Fetching user profile:', tokenInfo);
+    }
+
+    const response = await fetch(apiUrl, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
 
     if (!response.ok) {
-      // Include status code in error for proper 401 detection
-      throw new Error(`Failed to fetch user profile (${response.status})`);
+      // Try to get error details from response body
+      let errorBody = '';
+      try {
+        const errorData = await response.json();
+        errorBody = errorData.message || errorData.error || JSON.stringify(errorData);
+      } catch {
+        try {
+          errorBody = await response.text();
+        } catch {
+          errorBody = 'Could not read error body';
+        }
+      }
+
+      if (__DEV__) {
+        console.error('[Auth] User profile fetch failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorBody,
+          url: apiUrl,
+        });
+      }
+
+      // Include status code and error body for proper debugging
+      throw new Error(`Failed to fetch user profile (${response.status}): ${errorBody}`);
     }
 
     const profile = await response.json();
+
+    if (__DEV__) {
+      console.log('[Auth] User profile fetched successfully:', {
+        id: profile.id,
+        email: profile.email,
+      });
+    }
 
     // Also fetch credit balance
     const balanceResponse = await fetch(`${VOPIConfig.apiUrl}/api/v1/credits/balance`, {
@@ -162,6 +251,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (balanceResponse.ok) {
       const balanceData = await balanceResponse.json();
       creditsBalance = balanceData.balance;
+    } else if (__DEV__) {
+      console.warn('[Auth] Failed to fetch credit balance:', {
+        status: balanceResponse.status,
+      });
     }
 
     return {
@@ -247,83 +340,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('No authorization code received');
       }
 
-      // Retrieve stored OAuth state
-      const storedState = await storage.getItem(STORAGE_KEYS.OAUTH_STATE);
-      const storedCodeVerifier = await storage.getItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER);
-      const storedProvider = await storage.getItem(STORAGE_KEYS.OAUTH_PROVIDER);
-
-      // Debug logging for OAuth callback
-      if (__DEV__) {
-        console.log('[OAuth] Retrieved from storage:', {
-          hasState: !!storedState,
-          hasCodeVerifier: !!storedCodeVerifier,
-          codeVerifierLength: storedCodeVerifier?.length,
-          hasProvider: !!storedProvider,
-        });
+      // Validate OAuth state
+      const validation = await validateOAuthState(returnedState || '');
+      if (!validation.isValid) {
+        throw new Error(validation.error || 'OAuth validation failed');
       }
 
-      // Validate state
-      if (returnedState !== storedState) {
-        throw new Error('OAuth state mismatch - possible CSRF attack');
-      }
-
-      // Build callback request body
-      const callbackBody: Record<string, unknown> = {
-        provider: storedProvider,
+      // Exchange code for tokens
+      const tokens = await exchangeOAuthCode({
         code,
         redirectUri,
-        state: storedState,
-        platform: Platform.OS,
-        deviceInfo: {
-          deviceName: `Expo App`,
-        },
-      };
-
-      // Only include codeVerifier if we have one (required for mobile PKCE)
-      if (storedCodeVerifier) {
-        callbackBody.codeVerifier = storedCodeVerifier;
-        callbackBody.code_verifier = storedCodeVerifier; // Also send snake_case in case backend expects it
-      }
-
-      if (__DEV__) {
-        console.log('[OAuth] Sending callback request:', {
-          provider: callbackBody.provider,
-          hasCode: !!callbackBody.code,
-          hasCodeVerifier: !!callbackBody.codeVerifier,
-          platform: callbackBody.platform,
-        });
-      }
-
-      // Step 4: Exchange code for tokens
-      const callbackResponse = await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/oauth/callback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(callbackBody),
+        provider: validation.storedProvider!,
+        state: validation.storedState!,
+        codeVerifier: validation.storedCodeVerifier,
       });
 
-      if (!callbackResponse.ok) {
-        const error = await callbackResponse.json().catch(() => ({}));
-        throw new Error(error.message || `Failed to exchange code for tokens (${callbackResponse.status})`);
-      }
-
-      const { accessToken, refreshToken, user } = await callbackResponse.json();
-
-      // Store tokens and user
-      await Promise.all([
-        storage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
-        storage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken),
-        storage.setItem(STORAGE_KEYS.USER, JSON.stringify(user)),
-      ]);
-
-      // Clean up OAuth state
-      await Promise.all([
-        storage.deleteItem(STORAGE_KEYS.OAUTH_STATE),
-        storage.deleteItem(STORAGE_KEYS.OAUTH_CODE_VERIFIER),
-        storage.deleteItem(STORAGE_KEYS.OAUTH_PROVIDER),
-      ]);
+      // Store tokens and clean up
+      await storeOAuthTokens(tokens);
+      await cleanupOAuthState();
 
       safeSetState({
-        user,
+        user: tokens.user,
         isLoading: false,
         isAuthenticated: true,
       });
@@ -341,17 +378,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const refreshToken = await storage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
 
       if (refreshToken) {
-        // Revoke token on server (fire and forget, but log errors in dev)
-        fetch(`${VOPIConfig.apiUrl}/api/v1/auth/logout`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        }).catch((error) => {
+        // Revoke token on server with proper error handling
+        try {
+          const response = await fetch(`${VOPIConfig.apiUrl}/api/v1/auth/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+          });
+
+          if (!response.ok && __DEV__) {
+            console.warn('[Auth] Logout request failed with status:', response.status);
+          }
+        } catch (error) {
           // Log logout errors in development for debugging
           if (__DEV__) {
-            console.warn('[Auth] Logout request failed:', error.message);
+            console.warn('[Auth] Logout request failed:', error instanceof Error ? error.message : 'Unknown error');
           }
-        });
+          // Continue with local logout even if server request fails
+        }
       }
     } finally {
       await clearAuth();
@@ -393,7 +437,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return null;
         }
 
-        const { accessToken, refreshToken: newRefreshToken } = await response.json();
+        const data = await response.json();
+        const { accessToken, refreshToken: newRefreshToken } = data;
+
+        if (__DEV__) {
+          // Decode both tokens to verify their types
+          const accessPayload = decodeJWTPayload(accessToken);
+          const refreshPayload = decodeJWTPayload(newRefreshToken);
+
+          console.log('[Auth] Token refresh response:', {
+            accessTokenLength: accessToken?.length,
+            refreshTokenLength: newRefreshToken?.length,
+            accessTokenType: accessPayload?.type, // Should be 'access'
+            refreshTokenType: refreshPayload?.type, // Should be 'refresh'
+            responseKeys: Object.keys(data),
+          });
+
+          // Warn if tokens have wrong types
+          if (accessPayload?.type !== 'access') {
+            console.error('[Auth] ⚠️ accessToken has wrong type:', accessPayload?.type);
+          }
+          if (refreshPayload?.type !== 'refresh') {
+            console.error('[Auth] ⚠️ refreshToken has wrong type:', refreshPayload?.type);
+          }
+        }
 
         await Promise.all([
           storage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken),
@@ -416,11 +483,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const accessToken = await storage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
 
     if (!accessToken) {
+      if (__DEV__) {
+        console.log('[Auth] getAccessToken: No token in storage');
+      }
       return null;
     }
 
     // Check if token is expired using safe decoder
     const payload = decodeJWTPayload(accessToken);
+
+    if (__DEV__) {
+      console.log('[Auth] getAccessToken: Token from storage has type:', payload?.type);
+    }
+
     if (payload && typeof payload.exp === 'number') {
       const expiresAt = payload.exp * 1000;
       const now = Date.now();
@@ -428,6 +503,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (expiresAt - bufferMs < now) {
         // Token is expired or about to expire, refresh it
+        if (__DEV__) {
+          console.log('[Auth] getAccessToken: Token expired, refreshing...');
+        }
         return await refreshAccessToken();
       }
     }

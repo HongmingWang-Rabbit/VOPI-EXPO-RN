@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
 import { formatDuration } from '../../src/utils/strings';
+import { VOPIConfig } from '../../src/config/vopi.config';
 
 export default function CaptureScreen() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export default function CaptureScreen() {
       }, 1000);
 
       const video = await cameraRef.current.recordAsync({
-        maxDuration: 60, // 60 second max
+        maxDuration: VOPIConfig.maxRecordingDuration,
       });
 
       if (video?.uri) {
@@ -66,7 +67,23 @@ export default function CaptureScreen() {
         );
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to record video. Please try again.');
+      // Provide specific error messages based on error type
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      let userMessage = 'Failed to record video. Please try again.';
+
+      if (errorMessage.includes('permission')) {
+        userMessage = 'Camera permission was denied. Please enable camera access in Settings.';
+      } else if (errorMessage.includes('busy') || errorMessage.includes('use')) {
+        userMessage = 'Camera is busy. Please close other apps using the camera and try again.';
+      } else if (errorMessage.includes('storage') || errorMessage.includes('space')) {
+        userMessage = 'Not enough storage space. Please free up some space and try again.';
+      }
+
+      if (__DEV__) {
+        console.error('[Capture] Recording failed:', errorMessage);
+      }
+
+      Alert.alert('Recording Failed', userMessage);
     } finally {
       setIsRecording(false);
       if (recordingIntervalRef.current) {
@@ -141,29 +158,36 @@ export default function CaptureScreen() {
         {/* Bottom Controls */}
         <View style={styles.controls}>
           <TouchableOpacity
-            style={styles.sideButton}
+            style={[styles.sideButton, isRecording && styles.sideButtonDisabled]}
             onPress={toggleFacing}
             disabled={isRecording}
             accessibilityRole="button"
-            accessibilityLabel="Switch camera"
+            accessibilityLabel={isRecording ? 'Switch camera (disabled while recording)' : 'Switch camera'}
             accessibilityState={{ disabled: isRecording }}
           >
-            <Ionicons name="camera-reverse" size={28} color={isRecording ? colors.textSecondary : colors.white} />
+            <Ionicons name="camera-reverse" size={28} color={isRecording ? 'rgba(255,255,255,0.4)' : colors.white} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.recordButton, isRecording && styles.recordButtonActive]}
-            onPress={isRecording ? stopRecording : startRecording}
-            accessibilityRole="button"
-            accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
-            accessibilityState={{ selected: isRecording }}
-          >
-            {isRecording ? (
-              <View style={styles.stopIcon} />
-            ) : (
-              <View style={styles.recordIcon} />
-            )}
-          </TouchableOpacity>
+          <View style={styles.recordButtonContainer}>
+            <TouchableOpacity
+              style={[styles.recordButton, isRecording && styles.recordButtonActive]}
+              onPress={isRecording ? stopRecording : startRecording}
+              accessibilityRole="button"
+              accessibilityLabel={isRecording ? 'Stop recording' : 'Start recording'}
+              accessibilityState={{ selected: isRecording }}
+              accessibilityHint={isRecording ? 'Double tap to stop recording' : 'Double tap to start recording video'}
+            >
+              {isRecording ? (
+                <View style={styles.stopIcon} />
+              ) : (
+                <View style={styles.recordIcon} />
+              )}
+            </TouchableOpacity>
+            {/* Text label for accessibility - visible indication of recording state */}
+            <Text style={styles.recordButtonLabel}>
+              {isRecording ? 'STOP' : 'REC'}
+            </Text>
+          </View>
 
           <View style={styles.sideButton} />
         </View>
@@ -260,6 +284,21 @@ const styles = StyleSheet.create({
     height: 50,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  sideButtonDisabled: {
+    opacity: 0.5,
+  },
+  recordButtonContainer: {
+    alignItems: 'center',
+  },
+  recordButtonLabel: {
+    color: colors.white,
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
+    marginTop: spacing.xs,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   recordButton: {
     width: 80,

@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { STORAGE_KEYS } from '../constants/storage';
 
 /**
  * Cross-platform secure storage utility
@@ -61,14 +62,7 @@ export const storage = {
    * Useful for logout and error recovery
    */
   async clearAuth(): Promise<void> {
-    const authKeys = [
-      'vopi_access_token',
-      'vopi_refresh_token',
-      'vopi_user',
-      'oauth_state',
-      'oauth_code_verifier',
-      'oauth_provider',
-    ];
+    const authKeys = Object.values(STORAGE_KEYS);
     await Promise.all(authKeys.map((key) => storage.deleteItem(key)));
   },
 };
