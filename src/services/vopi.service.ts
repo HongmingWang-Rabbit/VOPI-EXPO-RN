@@ -37,19 +37,11 @@ export const vopiService = {
     }),
 
   // Uploads
-  getPresignedUrl: async (filename: string, contentType = 'video/mp4') => {
-    if (__DEV__) {
-      console.log('[VOPI] Getting presigned URL:', { filename, contentType });
-    }
-    const result = await apiClient.post<PresignResponse>('/api/v1/uploads/presign', {
+  getPresignedUrl: (filename: string, contentType = 'video/mp4') =>
+    apiClient.post<PresignResponse>('/api/v1/uploads/presign', {
       filename,
       contentType,
-    });
-    if (__DEV__) {
-      console.log('[VOPI] Presigned URL received:', { hasUploadUrl: !!result.uploadUrl });
-    }
-    return result;
-  },
+    }),
 
   uploadFile: async (
     uploadUrl: string,
@@ -164,7 +156,14 @@ export const vopiService = {
 
   getJobStatus: (jobId: string) => apiClient.get<JobStatus>(`/api/v1/jobs/${jobId}/status`),
 
-  cancelJob: (jobId: string) => apiClient.delete<{ id: string; status: string; message: string }>(`/api/v1/jobs/${jobId}`),
+  cancelJob: (jobId: string) =>
+    apiClient.post<{ id: string; status: string; message: string }>(`/api/v1/jobs/${jobId}/cancel`),
+
+  deleteJob: (jobId: string) =>
+    apiClient.delete<void>(`/api/v1/jobs/${jobId}`),
+
+  deleteJobImage: (jobId: string, frameId: string, version: string) =>
+    apiClient.delete<void>(`/api/v1/jobs/${jobId}/images/${frameId}/${version}`),
 
   listJobs: (params?: { status?: string; limit?: number; offset?: number }) =>
     apiClient.get<{ jobs: Job[]; total: number }>('/api/v1/jobs', params as Record<string, string | number>),

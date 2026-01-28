@@ -4,6 +4,14 @@ import { VOPIConfig } from '../config/vopi.config';
 import { UploadState } from '../types/vopi.types';
 import { capitalizeFirst } from '../utils/strings';
 
+// UI strings for internationalization
+const UI_STRINGS = {
+  CREATING_JOB: 'Creating job...',
+  STARTING: 'Starting...',
+  JOB_TIMED_OUT: 'Job timed out',
+  FAILED_TO_FETCH_RESULTS: 'Failed to fetch results',
+} as const;
+
 interface VideoFile {
   uri: string;
   fileName?: string;
@@ -73,7 +81,7 @@ export function useVOPIUpload() {
         if (isCancelledRef.current) return;
 
         // Step 3: Create job
-        safeSetState({ status: 'processing', jobId: '', progress: 0, step: 'Creating job...' });
+        safeSetState({ status: 'processing', jobId: '', progress: 0, step: UI_STRINGS.CREATING_JOB });
 
         const job = await vopiService.createJob(presign.publicUrl, { stackId });
         currentJobIdRef.current = job.id;
@@ -83,10 +91,12 @@ export function useVOPIUpload() {
           return;
         }
 
-        safeSetState({ status: 'processing', jobId: job.id, progress: 0, step: 'Starting...' });
+        safeSetState({ status: 'processing', jobId: job.id, progress: 0, step: UI_STRINGS.STARTING });
 
         // Step 4: Poll for completion
         let attempts = 0;
+        let consecutiveErrors = 0;
+        const MAX_CONSECUTIVE_ERRORS = 5;
 
         const pollStatus = async () => {
           if (isCancelledRef.current || !isMountedRef.current) {
@@ -97,12 +107,13 @@ export function useVOPIUpload() {
           attempts++;
           if (attempts > VOPIConfig.maxPollingAttempts) {
             cleanup();
-            safeSetState({ status: 'error', message: 'Job timed out' });
+            safeSetState({ status: 'error', message: UI_STRINGS.JOB_TIMED_OUT });
             return;
           }
 
           try {
             const status = await vopiService.getJobStatus(job.id);
+            consecutiveErrors = 0; // Reset on success
 
             safeSetState({
               status: 'processing',
@@ -118,8 +129,22 @@ export function useVOPIUpload() {
               cleanup();
               safeSetState({ status: 'error', message: `Job ${status.status}` });
             }
-          } catch {
-            // Continue polling on transient errors
+          } catch (error) {
+            consecutiveErrors++;
+
+            if (__DEV__) {
+              console.warn('[Upload] Polling error:', error instanceof Error ? error.message : 'Unknown error');
+            }
+
+            // Stop polling after too many consecutive errors
+            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+              cleanup();
+              safeSetState({
+                status: 'error',
+                message: 'Connection lost - please check your network and try again',
+              });
+            }
+            // Otherwise continue polling on transient errors
           }
         };
 
@@ -128,6 +153,15 @@ export function useVOPIUpload() {
         pollingRef.current = setInterval(pollStatus, VOPIConfig.pollingInterval);
       } catch (error) {
         cleanup();
+
+        if (__DEV__) {
+          console.error('[Upload] Error during upload/process:', {
+            errorType: error?.constructor?.name,
+            message: error instanceof Error ? error.message : String(error),
+            error,
+          });
+        }
+
         const message = error instanceof Error ? error.message : 'Unknown error';
         safeSetState({ status: 'error', message });
       }
@@ -150,7 +184,7 @@ export function useVOPIUpload() {
     } catch {
       safeSetState({
         status: 'error',
-        message: 'Failed to fetch results',
+        message: UI_STRINGS.FAILED_TO_FETCH_RESULTS,
       });
     }
   };

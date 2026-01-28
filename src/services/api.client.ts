@@ -27,6 +27,16 @@ class APIClient {
       const token = await this.getAccessToken();
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
+
+        if (__DEV__) {
+          // Log token preview to verify it's being set correctly
+          const tokenPreview = token.length > 30
+            ? `${token.slice(0, 15)}...${token.slice(-10)}`
+            : token;
+          console.log('[API] Setting Authorization header:', { tokenPreview, tokenLength: token.length });
+        }
+      } else if (__DEV__) {
+        console.warn('[API] No token available for Authorization header');
       }
     }
 
@@ -81,11 +91,26 @@ class APIClient {
       } catch (error) {
         // Don't retry on abort (timeout)
         if (error instanceof Error && error.name === 'AbortError') {
+          if (__DEV__) {
+            console.error('[API] Request timed out after', timeout, 'ms');
+          }
           throw new TimeoutError();
         }
 
-        // Convert to NetworkError for connection issues
-        if (error instanceof TypeError && error.message.includes('fetch')) {
+        // Detect network errors more robustly
+        const isNetworkErr = this.isNetworkError(error);
+
+        if (__DEV__) {
+          console.error('[API] Fetch error:', {
+            attempt: attempt + 1,
+            maxRetries,
+            isNetworkError: isNetworkErr,
+            errorName: error instanceof Error ? error.name : 'unknown',
+            errorMessage: error instanceof Error ? error.message : String(error),
+          });
+        }
+
+        if (isNetworkErr) {
           lastError = new NetworkError();
         } else {
           lastError = error instanceof Error ? error : new Error('Unknown error');
@@ -106,9 +131,62 @@ class APIClient {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  /**
+   * Detect network errors more robustly than string matching
+   * Handles various network error scenarios across platforms
+   */
+  private isNetworkError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+
+    // TypeError is thrown by fetch on network failures
+    if (error instanceof TypeError) {
+      return true;
+    }
+
+    // Check error name for common network error types
+    const networkErrorNames = ['NetworkError', 'TypeError', 'FetchError'];
+    if (networkErrorNames.includes(error.name)) {
+      return true;
+    }
+
+    // Check message patterns for network-related errors
+    const networkPatterns = [
+      'network',
+      'failed to fetch',
+      'load failed',
+      'internet',
+      'offline',
+      'connection',
+      'ECONNREFUSED',
+      'ENOTFOUND',
+      'ETIMEDOUT',
+    ];
+
+    const lowerMessage = error.message.toLowerCase();
+    return networkPatterns.some((pattern) => lowerMessage.includes(pattern.toLowerCase()));
+  }
+
   private async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
-      throw await createAPIError(response);
+      const error = await createAPIError(response);
+
+      if (__DEV__) {
+        console.error('[API] Request failed:', {
+          url: response.url,
+          status: response.status,
+          statusText: response.statusText,
+          errorMessage: error.message,
+          errorCode: error.code,
+          errorDetails: error.details,
+        });
+      }
+
+      throw error;
+    }
+
+    // 204 No Content has no body
+    if (response.status === 204) {
+      return undefined as T;
     }
 
     return response.json();

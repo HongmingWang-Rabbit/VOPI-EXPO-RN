@@ -245,14 +245,34 @@ describe('vopiService', () => {
   });
 
   describe('cancelJob', () => {
-    it('calls apiClient.delete with job ID', async () => {
+    it('calls apiClient.post with cancel endpoint', async () => {
       const mockResponse = { id: 'job-123', status: 'cancelled', message: 'Job cancelled' };
-      mockApiClient.delete.mockResolvedValue(mockResponse);
+      mockApiClient.post.mockResolvedValue(mockResponse);
 
       const result = await vopiService.cancelJob('job-123');
 
-      expect(mockApiClient.delete).toHaveBeenCalledWith('/api/v1/jobs/job-123');
+      expect(mockApiClient.post).toHaveBeenCalledWith('/api/v1/jobs/job-123/cancel');
       expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('deleteJob', () => {
+    it('calls apiClient.delete with job ID', async () => {
+      mockApiClient.delete.mockResolvedValue(undefined);
+
+      await vopiService.deleteJob('job-123');
+
+      expect(mockApiClient.delete).toHaveBeenCalledWith('/api/v1/jobs/job-123');
+    });
+  });
+
+  describe('deleteJobImage', () => {
+    it('calls apiClient.delete with job ID, frameId, and version', async () => {
+      mockApiClient.delete.mockResolvedValue(undefined);
+
+      await vopiService.deleteJobImage('job-123', 'frame-1', 'v1');
+
+      expect(mockApiClient.delete).toHaveBeenCalledWith('/api/v1/jobs/job-123/images/frame-1/v1');
     });
   });
 

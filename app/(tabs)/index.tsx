@@ -72,6 +72,25 @@ export default function HomeScreen() {
 
         <UploadProgress state={state} onCancel={cancel} />
 
+        {/* Show option to check Products tab while processing */}
+        {state.status === 'processing' && state.jobId && (
+          <View style={styles.processingActions}>
+            <Text style={styles.processingHint}>
+              Processing will continue in the background
+            </Text>
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => {
+                router.push('/(tabs)/products');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Check status in Products tab"
+            >
+              <Text style={styles.secondaryButtonText}>Check Products Tab</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {state.status === 'completed' && (
           <View style={styles.completedActions}>
             <TouchableOpacity
@@ -156,6 +175,16 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: spacing.xxl,
+  },
+  processingActions: {
+    marginTop: spacing.lg,
+    alignItems: 'center',
+  },
+  processingHint: {
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
+    marginBottom: spacing.md,
+    textAlign: 'center',
   },
   completedActions: {
     marginTop: spacing.xl,

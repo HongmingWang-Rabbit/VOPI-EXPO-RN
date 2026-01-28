@@ -93,9 +93,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isAuthenticated: true,
       });
 
+      // Proactively refresh if token is expired or about to expire
+      let validToken = accessToken;
+      const payload = decodeJWTPayload(accessToken);
+      if (payload && typeof payload.exp === 'number') {
+        const bufferMs = 60 * 1000; // 1 minute buffer
+        if (payload.exp * 1000 - bufferMs < Date.now()) {
+          if (__DEV__) {
+            console.log('[Auth] Stored token expired, refreshing before profile fetch');
+          }
+          const refreshed = await refreshAccessToken();
+          if (refreshed) {
+            validToken = refreshed;
+          } else if (refreshToken) {
+            // Refresh token also invalid - clear auth
+            if (__DEV__) {
+              console.log('[Auth] Refresh token invalid, clearing auth');
+            }
+            await clearAuth();
+            safeSetState({ user: null, isLoading: false, isAuthenticated: false });
+            return;
+          }
+          // If no refresh token, try with expired token as fallback
+        }
+      }
+
       // Try to refresh user data in the background
       try {
-        const freshUser = await fetchUserProfile(accessToken);
+        const freshUser = await fetchUserProfile(validToken);
         safeSetState({
           user: freshUser,
           isLoading: false,
@@ -112,22 +137,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
 
-        // Check if token is expired (401) vs server error (500) vs network error
+        // Check if token is expired (401) vs network error
         const isAuthError = errorMessage.includes('401') || errorMessage.includes('Unauthorized');
-        const isServerError = errorMessage.includes('500') || errorMessage.includes('502') ||
-                              errorMessage.includes('503') || errorMessage.includes('504');
-
-        if (__DEV__) {
-          console.log('[Auth] Error classification:', {
-            isAuthError,
-            isServerError,
-            willAttemptRefresh: isAuthError && !!refreshToken,
-            willKeepStoredSession: !isAuthError,
-          });
-        }
 
         if (isAuthError && refreshToken) {
-          // Token expired - try to refresh
+          // Token rejected - try to refresh (handles edge case where proactive refresh was skipped)
           const newToken = await refreshAccessToken();
           if (newToken) {
             try {
@@ -139,13 +153,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               });
               await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(freshUser));
             } catch {
-              // Refresh worked but profile fetch failed - keep stored user
               if (__DEV__) {
                 console.log('[Auth] Token refreshed but profile fetch failed, keeping stored user');
               }
             }
           } else {
-            // Refresh token also invalid - clear auth
             if (__DEV__) {
               console.log('[Auth] Refresh token invalid, clearing auth');
             }
@@ -153,7 +165,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             safeSetState({ user: null, isLoading: false, isAuthenticated: false });
           }
         }
-        // For network errors, keep the stored session (already set above)
+        // For network/server errors, keep the stored session (already set above)
       }
     } catch (error) {
       if (__DEV__) {

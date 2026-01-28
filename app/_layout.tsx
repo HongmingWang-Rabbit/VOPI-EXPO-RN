@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -27,8 +27,9 @@ const queryClient = new QueryClient({
 function RootLayoutNav() {
   const { isLoading, getAccessToken } = useAuth();
 
-  // Connect API client to auth context
-  useEffect(() => {
+  // Connect API client to auth context - use useLayoutEffect to ensure
+  // token getter is set before any children render and make API calls
+  useLayoutEffect(() => {
     apiClient.setTokenGetter(getAccessToken);
   }, [getAccessToken]);
 

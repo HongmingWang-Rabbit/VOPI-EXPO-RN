@@ -7,8 +7,11 @@ export const colors = {
 
   // Status
   success: '#34C759',
+  successLight: '#E8F8EC',
   error: '#FF3B30',
+  errorLight: '#FFF5F5',
   warning: '#FF9500',
+  warningLight: '#FFF8E6',
 
   // Neutral
   white: '#FFFFFF',
@@ -25,6 +28,7 @@ export const colors = {
   // Overlay
   overlay: 'rgba(0, 0, 0, 0.5)',
   overlayLight: 'rgba(0, 0, 0, 0.1)',
+  overlayDark: 'rgba(0, 0, 0, 0.95)',
 } as const;
 
 export type ColorName = keyof typeof colors;

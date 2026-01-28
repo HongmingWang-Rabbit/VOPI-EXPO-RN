@@ -22,11 +22,17 @@
             "CFBundleURLSchemes": [
               "com.googleusercontent.apps.613369473822-pi7ut8sau3oh8i942gi2chbnkf9s069r"
             ]
+          },
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.613369473822-pi7ut8sau3oh8i942gi2chbnkf9s069r"
+            ]
           }
         ],
         "NSCameraUsageDescription": "VOPI needs camera access to record product videos",
         "NSMicrophoneUsageDescription": "VOPI needs microphone access for voice descriptions",
-        "NSPhotoLibraryUsageDescription": "VOPI needs photo library access to select videos for processing"
+        "NSPhotoLibraryUsageDescription": "VOPI needs photo library access to select videos for processing",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
