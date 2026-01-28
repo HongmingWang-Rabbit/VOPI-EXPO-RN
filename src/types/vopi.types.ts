@@ -119,6 +119,17 @@ export interface ProductMetadata {
     price?: number;
     currency?: string;
     keywords?: string[];
+    gender?: string;
+    targetAudience?: string;
+    ageGroup?: string;
+    style?: string;
+    modelNumber?: string;
+    compareAtPrice?: number;
+    costPerItem?: number;
+    countryOfOrigin?: string;
+    manufacturer?: string;
+    pattern?: string;
+    productType?: string;
     confidence: {
       overall: number;
       title: number;

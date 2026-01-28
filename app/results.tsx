@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { vopiService } from '../src/services/vopi.service';
-import { DownloadUrlsResponse, Job } from '../src/types/vopi.types';
-import { ResultsGallery } from '../src/components/product/ResultsGallery';
+import { DownloadUrlsResponse, Job, ProductMetadata } from '../src/types/vopi.types';
+import { FlatImageGallery } from '../src/components/product/FlatImageGallery';
+import { EditableField } from '../src/components/product/EditableField';
 import { colors, spacing, borderRadius, fontSize, fontWeight } from '../src/theme';
 
 export default function ResultsScreen() {
@@ -14,6 +15,7 @@ export default function ResultsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [downloadUrls, setDownloadUrls] = useState<DownloadUrlsResponse | null>(null);
+  const [metadata, setMetadata] = useState<ProductMetadata | null>(null);
 
   const fetchResults = useCallback(async () => {
     if (!jobId) return;
@@ -22,13 +24,28 @@ export default function ResultsScreen() {
       setLoading(true);
       setError(null);
 
-      const [jobData, urlsData] = await Promise.all([
+      const [jobResult, urlsResult, metaResult] = await Promise.allSettled([
         vopiService.getJob(jobId),
         vopiService.getDownloadUrls(jobId),
+        vopiService.getProductMetadata(jobId),
       ]);
+
+      if (jobResult.status === 'rejected') {
+        throw jobResult.reason;
+      }
+
+      const jobData = jobResult.value;
+      const urlsData = urlsResult.status === 'fulfilled' ? urlsResult.value : null;
+      const metaData = metaResult.status === 'fulfilled' ? metaResult.value : null;
+
+      if (__DEV__) {
+        if (urlsResult.status === 'rejected') console.warn('[Results] Failed to fetch URLs:', urlsResult.reason);
+        if (metaResult.status === 'rejected') console.warn('[Results] Failed to fetch metadata:', metaResult.reason);
+      }
 
       setJob(jobData);
       setDownloadUrls(urlsData);
+      setMetadata(metaData ?? urlsData?.productMetadata ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load results');
     } finally {
@@ -40,9 +57,23 @@ export default function ResultsScreen() {
     fetchResults();
   }, [fetchResults]);
 
-  const handleClose = () => {
-    router.back();
-  };
+  const saveField = useCallback(
+    async (field: string, value: string | string[] | number) => {
+      if (!jobId) return;
+      try {
+        const updated = await vopiService.updateProductMetadata(jobId, { [field]: value });
+        setMetadata(updated);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        Alert.alert(`Failed to save ${field}`, message);
+        throw err;
+      }
+    },
+    [jobId]
+  );
+
+  const product = metadata?.product;
+  const title = product?.title || `Job #${jobId?.slice(0, 8)}`;
 
   if (loading) {
     return (
@@ -60,22 +91,13 @@ export default function ResultsScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle} accessibilityRole="header">Results</Text>
-          <TouchableOpacity
-            onPress={handleClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close results"
-          >
+          <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
             <Text style={styles.closeButton}>Close</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={fetchResults}
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading results"
-          >
+          <TouchableOpacity style={styles.retryButton} onPress={fetchResults}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -86,32 +108,164 @@ export default function ResultsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle} accessibilityRole="header">Results</Text>
-        <TouchableOpacity
-          onPress={handleClose}
-          accessibilityRole="button"
-          accessibilityLabel="Done viewing results"
-        >
+        <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">
+          {title}
+        </Text>
+        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
           <Text style={styles.closeButton}>Done</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Product Metadata */}
-      {downloadUrls?.productMetadata && (
-        <View style={styles.metadataSection}>
-          <Text style={styles.productTitle}>
-            {downloadUrls.productMetadata.product.title}
-          </Text>
-          <Text style={styles.productDescription} numberOfLines={3}>
-            {downloadUrls.productMetadata.product.description}
-          </Text>
-        </View>
-      )}
+      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Image Gallery */}
+        {downloadUrls?.commercialImages &&
+        Object.keys(downloadUrls.commercialImages).length > 0 ? (
+          <View style={styles.section}>
+            <FlatImageGallery commercialImages={downloadUrls.commercialImages} />
+          </View>
+        ) : (
+          <View style={styles.emptyImages}>
+            <Text style={styles.emptyText}>
+              {job?.status === 'completed'
+                ? 'No commercial images were generated.'
+                : `Job status: ${job?.status || 'unknown'}`}
+            </Text>
+          </View>
+        )}
 
-      {/* Image Gallery */}
-      {downloadUrls?.commercialImages && (
-        <ResultsGallery images={downloadUrls.commercialImages} />
-      )}
+        {/* Editable Metadata */}
+        {product && (
+          <View style={styles.metadataSection}>
+            <Text style={styles.sectionTitle}>Product Details</Text>
+
+            <EditableField
+              label="Title"
+              value={product.title}
+              onSave={(v) => saveField('title', v)}
+            />
+            <EditableField
+              label="Description"
+              value={product.description}
+              onSave={(v) => saveField('description', v)}
+              multiline
+            />
+            <EditableField
+              label="Short Description"
+              value={product.shortDescription}
+              onSave={(v) => saveField('shortDescription', v)}
+            />
+            <EditableField
+              label="Brand"
+              value={product.brand}
+              onSave={(v) => saveField('brand', v)}
+            />
+            <EditableField
+              label="Category"
+              value={product.category}
+              onSave={(v) => saveField('category', v)}
+            />
+            <EditableField
+              label="Color"
+              value={product.color}
+              onSave={(v) => saveField('color', v)}
+            />
+            <EditableField
+              label="Price"
+              value={product.price}
+              onSave={(v) => saveField('price', v)}
+              isNumber
+            />
+            <EditableField
+              label="Currency"
+              value={product.currency}
+              onSave={(v) => saveField('currency', v)}
+            />
+            <EditableField
+              label="Compare At Price"
+              value={product.compareAtPrice}
+              onSave={(v) => saveField('compareAtPrice', v)}
+              isNumber
+            />
+            <EditableField
+              label="Cost Per Item"
+              value={product.costPerItem}
+              onSave={(v) => saveField('costPerItem', v)}
+              isNumber
+            />
+
+            <Text style={[styles.sectionTitle, { marginTop: spacing.xl }]}>Demographics</Text>
+
+            <EditableField
+              label="Gender"
+              value={product.gender}
+              onSave={(v) => saveField('gender', v)}
+            />
+            <EditableField
+              label="Target Audience"
+              value={product.targetAudience}
+              onSave={(v) => saveField('targetAudience', v)}
+            />
+            <EditableField
+              label="Age Group"
+              value={product.ageGroup}
+              onSave={(v) => saveField('ageGroup', v)}
+            />
+            <EditableField
+              label="Style"
+              value={product.style}
+              onSave={(v) => saveField('style', v)}
+            />
+            <EditableField
+              label="Model Number"
+              value={product.modelNumber}
+              onSave={(v) => saveField('modelNumber', v)}
+            />
+            <EditableField
+              label="Manufacturer"
+              value={product.manufacturer}
+              onSave={(v) => saveField('manufacturer', v)}
+            />
+            <EditableField
+              label="Country of Origin"
+              value={product.countryOfOrigin}
+              onSave={(v) => saveField('countryOfOrigin', v)}
+            />
+            <EditableField
+              label="Pattern"
+              value={product.pattern}
+              onSave={(v) => saveField('pattern', v)}
+            />
+            <EditableField
+              label="Product Type"
+              value={product.productType}
+              onSave={(v) => saveField('productType', v)}
+            />
+
+            <Text style={[styles.sectionTitle, { marginTop: spacing.xl }]}>Lists</Text>
+
+            <EditableField
+              label="Bullet Points"
+              value={product.bulletPoints}
+              onSave={(v) => saveField('bulletPoints', v)}
+              isArray
+            />
+            <EditableField
+              label="Materials"
+              value={product.materials}
+              onSave={(v) => saveField('materials', v)}
+              isArray
+            />
+            <EditableField
+              label="Keywords"
+              value={product.keywords}
+              onSave={(v) => saveField('keywords', v)}
+              isArray
+            />
+          </View>
+        )}
+
+        <View style={styles.bottomSpacer} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -120,6 +274,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,
+  },
+  scroll: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -133,11 +290,26 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xl,
     fontWeight: fontWeight.semibold,
     color: colors.text,
+    flex: 1,
+    marginRight: spacing.md,
   },
   closeButton: {
     color: colors.primary,
     fontSize: fontSize.md,
     fontWeight: fontWeight.medium,
+  },
+  section: {
+    paddingTop: spacing.lg,
+  },
+  metadataSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  sectionTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   loadingContainer: {
     flex: 1,
@@ -172,20 +344,16 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
   },
-  metadataSection: {
-    padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  emptyImages: {
+    padding: spacing.xl,
+    alignItems: 'center',
   },
-  productTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    marginBottom: spacing.sm,
-    color: colors.text,
-  },
-  productDescription: {
+  emptyText: {
     fontSize: fontSize.sm,
     color: colors.textSecondary,
-    lineHeight: 20,
+    textAlign: 'center',
+  },
+  bottomSpacer: {
+    height: spacing.xxxl,
   },
 });
