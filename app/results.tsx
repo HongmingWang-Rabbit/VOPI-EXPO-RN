@@ -57,8 +57,16 @@ export default function ResultsScreen() {
     fetchResults();
   }, [fetchResults]);
 
+  const handleDeleteImage = useCallback(
+    async (frameId: string, version: string) => {
+      if (!jobId) return;
+      await vopiService.deleteJobImage(jobId, frameId, version);
+    },
+    [jobId]
+  );
+
   const saveField = useCallback(
-    async (field: string, value: string | string[] | number) => {
+    async (field: keyof ProductMetadata['product'], value: string | string[] | number) => {
       if (!jobId) return;
       try {
         const updated = await vopiService.updateProductMetadata(jobId, { [field]: value });
@@ -121,7 +129,11 @@ export default function ResultsScreen() {
         {downloadUrls?.commercialImages &&
         Object.keys(downloadUrls.commercialImages).length > 0 ? (
           <View style={styles.section}>
-            <FlatImageGallery commercialImages={downloadUrls.commercialImages} />
+            <FlatImageGallery
+              commercialImages={downloadUrls.commercialImages}
+              jobId={jobId!}
+              onDeleteImage={handleDeleteImage}
+            />
           </View>
         ) : (
           <View style={styles.emptyImages}>

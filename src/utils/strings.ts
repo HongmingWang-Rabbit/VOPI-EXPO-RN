@@ -33,12 +33,29 @@ export function decodeJWTPayload(token: string): Record<string, unknown> | null 
 }
 
 /**
- * Format duration in seconds to MM:SS
+ * Format duration in seconds to H:MM:SS or M:SS
  */
 export function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
+  const hrs = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
   const secs = seconds % 60;
+  if (hrs > 0) {
+    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Extract stable pathname from a URL for use as an image cache key.
+ * Strips query params (presigned URL signatures) so the same image
+ * hits the cache across sessions even when the signature changes.
+ */
+export function toCacheKey(url: string): string {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url;
+  }
 }
 
 /**

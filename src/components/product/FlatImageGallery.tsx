@@ -7,17 +7,28 @@ import {
   Modal,
   StyleSheet,
   useWindowDimensions,
-  Image,
   ScrollView,
   ViewToken,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import { colors, spacing, borderRadius, fontSize } from '../../theme';
+import { toCacheKey } from '../../utils/strings';
+
+interface ImageEntry {
+  url: string;
+  frameId: string;
+  version: string;
+}
 
 interface FlatImageGalleryProps {
   commercialImages: Record<string, Record<string, string>>;
+  jobId: string;
+  onDeleteImage?: (frameId: string, version: string) => Promise<void>;
 }
 
 const isValidImageUrl = (url: string): boolean => {
@@ -30,24 +41,28 @@ const isValidImageUrl = (url: string): boolean => {
 };
 
 const THUMBNAIL_SIZE = 56;
-const THUMBNAIL_GAP = spacing.sm;
+const MAX_DOTS = 7;
 
-function FlatImageGalleryComponent({ commercialImages }: FlatImageGalleryProps) {
+function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: FlatImageGalleryProps) {
   const { width: screenWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const [selectedUrl, setSelectedUrl] = useState<string | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<ImageEntry | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [deletingUrl, setDeletingUrl] = useState<string | null>(null);
+  const [deletedUrls, setDeletedUrls] = useState<Set<string>>(new Set());
   const carouselRef = useRef<FlatList>(null);
 
-  const imageUrls = useMemo(() => {
-    const urls: string[] = [];
-    for (const variant of Object.values(commercialImages)) {
-      for (const url of Object.values(variant)) {
-        urls.push(url);
+  const imageEntries = useMemo(() => {
+    const entries: ImageEntry[] = [];
+    for (const [frameId, variants] of Object.entries(commercialImages)) {
+      for (const [version, url] of Object.entries(variants)) {
+        if (!deletedUrls.has(url)) {
+          entries.push({ url, frameId, version });
+        }
       }
     }
-    return urls;
-  }, [commercialImages]);
+    return entries;
+  }, [commercialImages, deletedUrls]);
 
   const imageWidth = screenWidth - spacing.lg * 2;
 
@@ -62,12 +77,39 @@ function FlatImageGalleryComponent({ commercialImages }: FlatImageGalleryProps) 
   ).current;
 
   const handleDownload = useCallback(() => {
-    if (selectedUrl && isValidImageUrl(selectedUrl)) {
-      Linking.openURL(selectedUrl);
+    if (selectedEntry && isValidImageUrl(selectedEntry.url)) {
+      Linking.openURL(selectedEntry.url);
     }
-  }, [selectedUrl]);
+  }, [selectedEntry]);
 
-  const handleDismiss = useCallback(() => setSelectedUrl(null), []);
+  const handleDismiss = useCallback(() => setSelectedEntry(null), []);
+
+  const handleDelete = useCallback(() => {
+    if (!selectedEntry || !onDeleteImage) return;
+
+    const { frameId, version, url } = selectedEntry;
+    Alert.alert('Delete Image', 'Are you sure you want to delete this image?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingUrl(url);
+          try {
+            await onDeleteImage(frameId, version);
+            setDeletedUrls((prev) => new Set(prev).add(url));
+            setSelectedEntry(null);
+            // Adjust activeIndex if needed
+            setActiveIndex((prev) => Math.min(prev, Math.max(0, imageEntries.length - 2)));
+          } catch (err) {
+            Alert.alert('Delete Failed', err instanceof Error ? err.message : 'Unknown error');
+          } finally {
+            setDeletingUrl(null);
+          }
+        },
+      },
+    ]);
+  }, [selectedEntry, onDeleteImage, imageEntries.length]);
 
   const handleThumbnailPress = useCallback(
     (index: number) => {
@@ -87,32 +129,32 @@ function FlatImageGalleryComponent({ commercialImages }: FlatImageGalleryProps) 
   );
 
   const renderItem = useCallback(
-    ({ item, index }: { item: string; index: number }) => (
+    ({ item, index }: { item: ImageEntry; index: number }) => (
       <TouchableOpacity
         style={[styles.imageWrapper, { width: imageWidth, height: imageWidth }]}
-        onPress={() => setSelectedUrl(item)}
+        onPress={() => setSelectedEntry(item)}
         activeOpacity={0.8}
         accessibilityRole="button"
-        accessibilityLabel={`Product image ${index + 1} of ${imageUrls.length}`}
+        accessibilityLabel={`Product image ${index + 1} of ${imageEntries.length}`}
         accessibilityHint="Tap to view full size"
       >
         <Image
-          source={{ uri: item }}
+          source={{ uri: item.url, cacheKey: toCacheKey(item.url) }}
           style={[styles.image, { width: imageWidth, height: imageWidth }]}
-          resizeMode="cover"
-          accessibilityIgnoresInvertColors
+          contentFit="cover"
+          cachePolicy="disk"
         />
       </TouchableOpacity>
     ),
-    [imageWidth, imageUrls.length]
+    [imageWidth, imageEntries.length]
   );
 
   const keyExtractor = useCallback(
-    (item: string, index: number) => `${index}-${item.slice(-20)}`,
+    (item: ImageEntry) => `${item.frameId}-${item.version}`,
     []
   );
 
-  if (imageUrls.length === 0) {
+  if (imageEntries.length === 0) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>No images available</Text>
@@ -120,16 +162,17 @@ function FlatImageGalleryComponent({ commercialImages }: FlatImageGalleryProps) 
     );
   }
 
+  const isDeleting = !!deletingUrl;
+
   return (
     <View>
       <FlatList
         ref={carouselRef}
-        data={imageUrls}
+        data={imageEntries}
         renderItem={renderItem}
         keyExtractor={keyExtractor}
         getItemLayout={getItemLayout}
         horizontal
-        pagingEnabled
         showsHorizontalScrollIndicator={false}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
@@ -140,33 +183,35 @@ function FlatImageGalleryComponent({ commercialImages }: FlatImageGalleryProps) 
 
       {/* Counter + dots */}
       <View style={styles.indicatorRow}>
-        {imageUrls.length > 1 && (
+        {imageEntries.length > 1 && (
           <>
-            <View style={styles.dots}>
-              {imageUrls.map((_, i) => (
-                <View
-                  key={i}
-                  style={[styles.dot, i === activeIndex && styles.dotActive]}
-                />
-              ))}
-            </View>
+            {imageEntries.length <= MAX_DOTS && (
+              <View style={styles.dots}>
+                {imageEntries.map((_, i) => (
+                  <View
+                    key={i}
+                    style={[styles.dot, i === activeIndex && styles.dotActive]}
+                  />
+                ))}
+              </View>
+            )}
             <Text style={styles.counter}>
-              {activeIndex + 1} / {imageUrls.length}
+              {activeIndex + 1} / {imageEntries.length}
             </Text>
           </>
         )}
       </View>
 
       {/* Thumbnails */}
-      {imageUrls.length > 1 && (
+      {imageEntries.length > 1 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.thumbnailRow}
         >
-          {imageUrls.map((url, i) => (
+          {imageEntries.map((entry, i) => (
             <TouchableOpacity
-              key={i}
+              key={`${entry.frameId}-${entry.version}`}
               onPress={() => handleThumbnailPress(i)}
               activeOpacity={0.7}
               style={[
@@ -175,17 +220,17 @@ function FlatImageGalleryComponent({ commercialImages }: FlatImageGalleryProps) 
               ]}
             >
               <Image
-                source={{ uri: url }}
+                source={{ uri: entry.url, cacheKey: toCacheKey(entry.url) }}
                 style={styles.thumbnailImage}
-                resizeMode="cover"
-                accessibilityIgnoresInvertColors
+                contentFit="cover"
+                cachePolicy="disk"
               />
             </TouchableOpacity>
           ))}
         </ScrollView>
       )}
 
-      <Modal visible={!!selectedUrl} transparent animationType="fade">
+      <Modal visible={!!selectedEntry} transparent animationType="fade">
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalHeader, { paddingTop: insets.top + spacing.md }]}>
             <TouchableOpacity
@@ -196,14 +241,33 @@ function FlatImageGalleryComponent({ commercialImages }: FlatImageGalleryProps) 
             >
               <Ionicons name="close" size={24} color={colors.white} />
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleDownload}
-              style={styles.modalBtn}
-              accessibilityRole="button"
-              accessibilityLabel="Download image"
-            >
-              <Ionicons name="download-outline" size={24} color={colors.white} />
-            </TouchableOpacity>
+
+            <View style={styles.modalActions}>
+              {onDeleteImage && (
+                <TouchableOpacity
+                  onPress={handleDelete}
+                  style={styles.modalBtn}
+                  disabled={isDeleting}
+                  accessibilityRole="button"
+                  accessibilityLabel="Delete image"
+                >
+                  {isDeleting ? (
+                    <ActivityIndicator size="small" color={colors.error} />
+                  ) : (
+                    <Ionicons name="trash-outline" size={24} color={colors.error} />
+                  )}
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={handleDownload}
+                style={styles.modalBtn}
+                disabled={isDeleting}
+                accessibilityRole="button"
+                accessibilityLabel="Download image"
+              >
+                <Ionicons name="download-outline" size={24} color={colors.white} />
+              </TouchableOpacity>
+            </View>
           </View>
           <ScrollView
             contentContainerStyle={styles.modalImageContainer}
@@ -211,13 +275,13 @@ function FlatImageGalleryComponent({ commercialImages }: FlatImageGalleryProps) 
             minimumZoomScale={1}
             bouncesZoom
           >
-            {selectedUrl && (
+            {selectedEntry && (
               <Image
-                source={{ uri: selectedUrl }}
+                source={{ uri: selectedEntry.url, cacheKey: toCacheKey(selectedEntry.url) }}
                 style={[styles.modalImage, { width: screenWidth, height: screenWidth }]}
-                resizeMode="contain"
+                contentFit="contain"
+                cachePolicy="disk"
                 accessibilityLabel="Full size product image"
-                accessibilityIgnoresInvertColors
               />
             )}
           </ScrollView>
@@ -275,7 +339,7 @@ const styles = StyleSheet.create({
   thumbnailRow: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    gap: THUMBNAIL_GAP,
+    gap: spacing.sm,
   },
   thumbnail: {
     width: THUMBNAIL_SIZE,
@@ -310,6 +374,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   modalBtn: {
     padding: spacing.sm,

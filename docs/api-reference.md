@@ -303,6 +303,35 @@ Content-Type: video/mp4
 }
 ```
 
+### Cancel Job
+
+**Endpoint:** `POST /api/v1/jobs/:id/cancel`
+
+**Response:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "cancelled",
+  "message": "Job cancelled"
+}
+```
+
+### Delete Job
+
+**Endpoint:** `DELETE /api/v1/jobs/:id`
+
+Permanently deletes a job and all associated assets (frames, commercial images, metadata).
+
+**Response:** `204 No Content`
+
+### Delete Job Image
+
+**Endpoint:** `DELETE /api/v1/jobs/:id/images/:frameId/:version`
+
+Deletes a specific commercial image version for a frame.
+
+**Response:** `204 No Content`
+
 ### Poll Job Status
 
 **Endpoint:** `GET /api/v1/jobs/:id/status`
@@ -373,15 +402,35 @@ Get presigned URLs for accessing job assets. Required because S3 bucket is priva
     "title": "Handmade Ceramic Vase",
     "description": "Beautiful handcrafted ceramic vase...",
     "bulletPoints": ["Handcrafted", "Food-safe glaze"],
+    "brand": "ArtisanCo",
+    "category": "Home Decor",
+    "color": "Blue",
+    "price": 49.99,
+    "currency": "USD",
+    "gender": "Unisex",
+    "targetAudience": "adults",
+    "ageGroup": "adult",
+    "style": "modern",
+    "modelNumber": "CV-2026-BL",
     "confidence": { "overall": 85, "title": 90, "description": 80 }
   },
   "platforms": {
-    "shopify": { "title": "...", "descriptionHtml": "..." },
-    "amazon": { "item_name": "...", "bullet_point": [...] },
-    "ebay": { "title": "...", "aspects": {...} }
+    "shopify": { "title": "...", "descriptionHtml": "...", "metafields": [...] },
+    "amazon": { "item_name": "...", "bullet_point": [...], "department": "Unisex" },
+    "ebay": { "title": "...", "aspects": {...}, "pricingSummary": {...} }
   }
 }
 ```
+
+**New product fields (v2.1.0, all optional):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `gender` | `string` | Gender/department (e.g., "Men", "Women", "Unisex") |
+| `targetAudience` | `string` | Target audience (e.g., "adults", "teens") |
+| `ageGroup` | `string` | Age group (e.g., "adult", "child", "infant") |
+| `style` | `string` | Product style (e.g., "casual", "formal", "athletic") |
+| `modelNumber` | `string` | Model number (separate from MPN) |
 
 ### Update Product Metadata
 
@@ -393,9 +442,28 @@ Get presigned URLs for accessing job assets. Required because S3 bucket is priva
   "title": "User Edited Title",
   "description": "User edited description...",
   "bulletPoints": ["Updated feature 1", "Updated feature 2"],
-  "price": 29.99
+  "price": 29.99,
+  "gender": "Women",
+  "style": "casual",
+  "manufacturer": "Acme Corp"
 }
 ```
+
+**Editable fields (v2.1.0 additions):**
+
+| Field | Type | Validation |
+|-------|------|------------|
+| `gender` | `string` | max 50 chars |
+| `targetAudience` | `string` | max 100 chars |
+| `ageGroup` | `string` | max 50 chars |
+| `style` | `string` | max 100 chars |
+| `modelNumber` | `string` | max 100 chars |
+| `compareAtPrice` | `number` | >= 0 |
+| `costPerItem` | `number` | >= 0 |
+| `countryOfOrigin` | `string` | max 100 chars |
+| `manufacturer` | `string` | max 200 chars |
+| `pattern` | `string` | max 100 chars |
+| `productType` | `string` | max 100 chars |
 
 **Response:** Returns full updated `productMetadata` with regenerated platform formats.
 

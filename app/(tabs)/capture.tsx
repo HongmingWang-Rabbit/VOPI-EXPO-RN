@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, CameraType, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
@@ -8,6 +8,27 @@ import * as Haptics from 'expo-haptics';
 import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
 import { formatDuration } from '../../src/utils/strings';
 import { VOPIConfig } from '../../src/config/vopi.config';
+
+const RECORDING_TIPS = [
+  'Mention the product name and brand',
+  'Describe the main color and materials',
+  'State the price and currency',
+  'Who is it for? Mention gender or age group',
+  'Describe the style — casual, formal, athletic?',
+  'Show the product from multiple angles',
+  'Mention the category it belongs to',
+  'List key features as bullet points',
+  'Include a short and long description',
+  'State the model number if visible',
+  'Mention the manufacturer or origin country',
+  'Describe any patterns or textures',
+  'Compare to similar products if relevant',
+  'Highlight what makes this product unique',
+];
+
+const TIP_DISPLAY_MS = 4000;
+const TIP_FADE_MS = 400;
+const TIP_FADE_OUT_DELAY_MS = TIP_DISPLAY_MS - TIP_FADE_MS * 2;
 
 export default function CaptureScreen() {
   const router = useRouter();
@@ -19,6 +40,43 @@ export default function CaptureScreen() {
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [micPermission, requestMicPermission] = useMicrophonePermissions();
+
+  const [tipIndex, setTipIndex] = useState(0);
+  const tipOpacity = useRef(new Animated.Value(0)).current;
+  const tipTranslateY = useRef(new Animated.Value(20)).current;
+
+  // Single effect: cycle tips while recording, animate in/out each tip
+  useEffect(() => {
+    if (!isRecording) {
+      setTipIndex(0);
+      tipOpacity.setValue(0);
+      tipTranslateY.setValue(20);
+      return;
+    }
+
+    // Animate in
+    tipOpacity.setValue(0);
+    tipTranslateY.setValue(20);
+    Animated.parallel([
+      Animated.timing(tipOpacity, { toValue: 1, duration: TIP_FADE_MS, useNativeDriver: true }),
+      Animated.timing(tipTranslateY, { toValue: 0, duration: TIP_FADE_MS, useNativeDriver: true }),
+    ]).start();
+
+    // Fade out before next tip
+    const fadeOutId = setTimeout(() => {
+      Animated.timing(tipOpacity, { toValue: 0, duration: TIP_FADE_MS, useNativeDriver: true }).start();
+    }, TIP_FADE_OUT_DELAY_MS);
+
+    // Advance to next tip
+    const nextId = setTimeout(() => {
+      setTipIndex((prev) => (prev + 1) % RECORDING_TIPS.length);
+    }, TIP_DISPLAY_MS);
+
+    return () => {
+      clearTimeout(fadeOutId);
+      clearTimeout(nextId);
+    };
+  }, [isRecording, tipIndex, tipOpacity, tipTranslateY]);
 
   // Cleanup interval on unmount
   useEffect(() => {
@@ -155,6 +213,20 @@ export default function CaptureScreen() {
           )}
         </SafeAreaView>
 
+        {/* Recording Tips */}
+        {isRecording && (
+          <Animated.View
+            style={[
+              styles.tipContainer,
+              { opacity: tipOpacity, transform: [{ translateY: tipTranslateY }] },
+            ]}
+            pointerEvents="none"
+          >
+            <Ionicons name="bulb-outline" size={16} color={colors.warning} style={styles.tipIcon} />
+            <Text style={styles.tipText}>{RECORDING_TIPS[tipIndex]}</Text>
+          </Animated.View>
+        )}
+
         {/* Bottom Controls */}
         <View style={styles.controls}>
           <TouchableOpacity
@@ -232,7 +304,7 @@ const styles = StyleSheet.create({
   },
   permissionButton: {
     backgroundColor: colors.primary,
-    paddingVertical: 14,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.xl,
     borderRadius: borderRadius.lg,
   },
@@ -268,6 +340,28 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: fontSize.sm,
     fontWeight: fontWeight.semibold,
+  },
+  tipContainer: {
+    position: 'absolute',
+    bottom: 160,
+    left: spacing.xl,
+    right: spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+    alignSelf: 'center',
+  },
+  tipIcon: {
+    marginRight: spacing.sm,
+  },
+  tipText: {
+    color: colors.white,
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+    flex: 1,
   },
   controls: {
     position: 'absolute',

@@ -131,12 +131,19 @@ src/
 ├── types/
 │   └── vopi.types.ts        # TypeScript types
 ├── components/
-│   ├── VideoPicker.tsx      # Video selection
-│   └── UploadProgress.tsx   # Progress indicator
-└── screens/
-    ├── LoginScreen.tsx      # OAuth login
-    ├── HomeScreen.tsx       # Main interface
-    └── ResultsScreen.tsx    # Display results
+│   ├── ui/
+│   │   ├── VideoPicker.tsx       # Video selection
+│   │   ├── UploadProgress.tsx    # Progress indicator
+│   │   ├── ErrorBoundary.tsx     # Error boundary
+│   │   └── WebContainer.tsx      # Web layout wrapper
+│   └── product/
+│       ├── EditableField.tsx     # Inline-editable metadata field
+│       └── FlatImageGallery.tsx  # Swipeable image carousel with thumbnails and fullscreen modal
+├── utils/
+│   ├── errors.ts            # Typed error classes (APIError, NetworkError, TimeoutError)
+│   ├── storage.ts           # Cross-platform storage
+│   └── strings.ts           # String utilities (formatDuration, formatDate, decodeJWT)
+└── __tests__/               # Jest test files
 ```
 
 ---

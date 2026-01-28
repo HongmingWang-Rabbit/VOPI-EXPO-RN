@@ -7,16 +7,16 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
-  Image,
   Alert,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { vopiService } from '../../src/services/vopi.service';
 import { Job, JobStatus } from '../../src/types/vopi.types';
 import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
-import { capitalizeFirst, formatDate } from '../../src/utils/strings';
+import { capitalizeFirst, formatDate, toCacheKey } from '../../src/utils/strings';
 import { VOPIConfig } from '../../src/config/vopi.config';
 
 const JOBS_LIMIT = 50;
@@ -295,7 +295,7 @@ export default function ProductsScreen() {
         {/* Thumbnail */}
         <View style={styles.thumbnailContainer}>
           {data?.thumbnail ? (
-            <Image source={{ uri: data.thumbnail }} style={styles.thumbnail} resizeMode="cover" />
+            <Image source={{ uri: data.thumbnail, cacheKey: toCacheKey(data.thumbnail) }} style={styles.thumbnail} contentFit="cover" cachePolicy="disk" />
           ) : (
             <View style={styles.thumbnailPlaceholder}>
               <Ionicons
@@ -391,6 +391,7 @@ export default function ProductsScreen() {
         data={jobs}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
+        extraData={deletingIds}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         ListEmptyComponent={loading ? renderLoading() : error ? renderError() : renderEmpty()}
