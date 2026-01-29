@@ -153,6 +153,53 @@ export type UploadState =
   | { status: 'error'; message: string }
   | { status: 'cancelled' };
 
+// Platforms & Connections
+export type PlatformType = 'shopify' | 'amazon' | 'ebay';
+
+export interface PlatformInfo {
+  platform: PlatformType;
+  configured: boolean;
+  name: string;
+}
+
+export interface PlatformConnection {
+  id: string;
+  platform: PlatformType;
+  platformAccountId: string;
+  status: 'active' | 'expired' | 'revoked';
+  metadata?: Record<string, unknown>;
+  lastError?: string;
+  lastUsedAt?: string;
+  createdAt: string;
+}
+
+export interface ListingDetail {
+  id: string;
+  connectionId: string;
+  jobId: string;
+  platform: PlatformType;
+  platformProductId?: string;
+  status: string;
+  metadata?: Record<string, unknown>;
+  lastError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PushToListingRequest {
+  jobId: string;
+  connectionId: string;
+  options?: {
+    publishAsDraft?: boolean;
+    overrideMetadata?: Partial<ProductMetadata['product']>;
+  };
+}
+
+export interface PushToListingResponse {
+  listingId: string;
+  status: string;
+}
+
 // User
 export interface User {
   id: string;

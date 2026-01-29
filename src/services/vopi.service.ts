@@ -12,6 +12,10 @@ import {
   CreditPack,
   CostEstimate,
   ProductMetadata,
+  PlatformConnection,
+  ListingDetail,
+  PushToListingRequest,
+  PushToListingResponse,
 } from '../types/vopi.types';
 
 export const vopiService = {
@@ -177,4 +181,24 @@ export const vopiService = {
 
   updateProductMetadata: (jobId: string, updates: Partial<ProductMetadata['product']>) =>
     apiClient.patch<ProductMetadata>(`/api/v1/jobs/${jobId}/metadata`, updates),
+
+  // Platforms & Connections
+  getConnections: () =>
+    apiClient.get<{ connections: PlatformConnection[] }>('/api/v1/connections'),
+
+  getShopifyAuthUrl: (shop: string) =>
+    apiClient.get<{ authUrl: string }>(
+      '/api/v1/oauth/shopify/authorize',
+      { shop, response_type: 'json' }
+    ).then((data) => data.authUrl),
+
+  disconnectConnection: (connectionId: string) =>
+    apiClient.delete<void>(`/api/v1/connections/${connectionId}`),
+
+  // Listings
+  getListing: (listingId: string) =>
+    apiClient.get<ListingDetail>(`/api/v1/listings/${listingId}`),
+
+  pushToListing: (request: PushToListingRequest) =>
+    apiClient.post<PushToListingResponse>('/api/v1/listings/push', request),
 };

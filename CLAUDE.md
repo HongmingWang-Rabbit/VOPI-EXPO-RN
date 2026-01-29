@@ -34,8 +34,8 @@ app/                    # Expo Router pages (file-based routing)
 │   ├── index.tsx       # Home - video upload
 │   ├── capture.tsx     # Camera recording with tips overlay
 │   ├── products.tsx    # Job history list with delete
-│   └── settings.tsx    # User profile, credits
-├── results.tsx         # Modal for viewing results
+│   └── settings.tsx    # User profile, credits, connected platforms
+├── results.tsx         # Modal for viewing results + push to Shopify
 └── oauth/
     └── callback.tsx    # Web OAuth callback handler
 
@@ -53,6 +53,7 @@ src/
 ├── hooks/
 │   ├── useVOPIUpload.ts     # Upload flow + polling
 │   ├── useCredits.ts        # Credit balance
+│   ├── useConnections.ts    # Platform connections (Shopify)
 │   └── useResponsive.ts     # Responsive design
 ├── components/
 │   ├── ui/                  # Reusable UI components
@@ -131,6 +132,26 @@ STORAGE_KEYS = {
 **State Types (src/types/vopi.types.ts)**
 - `UploadState`: Discriminated union - idle | uploading | processing | completed | error | cancelled
 - `JobStatusType`: pending → downloading → extracting → scoring → classifying → extracting_product → generating → completed/failed/cancelled
+
+**Platform Connections & Shopify Integration (src/hooks/useConnections.ts)**
+- `useConnections()` hook fetches and caches platform connections
+- Exposes `connections`, `shopifyConnections`, `activeShopifyConnection`, `loading`, `error`, `refresh`
+- Settings screen shows "Connected Platforms" section with status badges and disconnect option
+- Shopify OAuth flow: user enters store name → `getShopifyAuthUrl(shop)` returns JSON auth URL → opens in browser → backend handles callback → frontend refreshes connections
+- Results screen shows "Push to Shopify" button when an active Shopify connection exists
+- Push sends product metadata (excluding `confidence`) with optional draft mode
+
+**Platform Types (src/types/vopi.types.ts)**
+- `PlatformType`: `'shopify' | 'amazon' | 'ebay'`
+- `PlatformConnection`: id, platform, platformAccountId, status (active/expired/revoked), metadata, lastError
+- `PushToListingRequest`: jobId, connectionId, options (publishAsDraft, overrideMetadata)
+
+**Platform API Endpoints (src/services/vopi.service.ts)**
+- `getConnections()` → `GET /api/v1/connections`
+- `getShopifyAuthUrl(shop)` → `GET /api/v1/oauth/shopify/authorize?shop=...&response_type=json` → `{ authUrl }`
+- `disconnectConnection(id)` → `DELETE /api/v1/connections/:id`
+- `pushToListing(request)` → `POST /api/v1/listings/push`
+- `getListing(id)` → `GET /api/v1/listings/:id`
 
 ### Route Protection
 - `(tabs)/*` requires authentication, redirects to login if not

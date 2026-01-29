@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { vopiService } from '../src/services/vopi.service';
 import { DownloadUrlsResponse, Job, ProductMetadata } from '../src/types/vopi.types';
+import { useConnections } from '../src/hooks/useConnections';
 import { FlatImageGallery } from '../src/components/product/FlatImageGallery';
 import { EditableField } from '../src/components/product/EditableField';
 import { colors, spacing, borderRadius, fontSize, fontWeight } from '../src/theme';
@@ -16,6 +18,9 @@ export default function ResultsScreen() {
   const [job, setJob] = useState<Job | null>(null);
   const [downloadUrls, setDownloadUrls] = useState<DownloadUrlsResponse | null>(null);
   const [metadata, setMetadata] = useState<ProductMetadata | null>(null);
+  const [publishAsDraft, setPublishAsDraft] = useState(true);
+  const [pushing, setPushing] = useState(false);
+  const { activeShopifyConnection, loading: connectionsLoading } = useConnections();
 
   const fetchResults = useCallback(async () => {
     if (!jobId) return;
@@ -79,6 +84,28 @@ export default function ResultsScreen() {
     },
     [jobId]
   );
+
+  const handlePushToShopify = useCallback(async () => {
+    if (!jobId || !activeShopifyConnection) return;
+    try {
+      setPushing(true);
+      const { confidence: _, ...productFields } = metadata?.product ?? {} as ProductMetadata['product'];
+      const response = await vopiService.pushToListing({
+        jobId,
+        connectionId: activeShopifyConnection.id,
+        options: {
+          publishAsDraft,
+          overrideMetadata: productFields,
+        },
+      });
+      Alert.alert('Success', `Product pushed to Shopify (${response.status}).`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      Alert.alert('Push Failed', message);
+    } finally {
+      setPushing(false);
+    }
+  }, [jobId, activeShopifyConnection, publishAsDraft, metadata]);
 
   const product = metadata?.product;
   const title = product?.title || `Job #${jobId?.slice(0, 8)}`;
@@ -276,6 +303,48 @@ export default function ResultsScreen() {
           </View>
         )}
 
+        {/* Push to Shopify */}
+        {job?.status === 'completed' && !connectionsLoading && (
+          <View style={styles.shopifySection}>
+            <Text style={styles.sectionTitle}>Push to Shopify</Text>
+            {activeShopifyConnection ? (
+              <>
+                <View style={styles.draftRow}>
+                  <Text style={styles.draftLabel}>Publish as draft</Text>
+                  <Switch
+                    value={publishAsDraft}
+                    onValueChange={setPublishAsDraft}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[styles.pushButton, pushing && styles.pushButtonDisabled]}
+                  onPress={handlePushToShopify}
+                  disabled={pushing}
+                  accessibilityRole="button"
+                  accessibilityLabel="Push product to Shopify"
+                >
+                  {pushing ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="cloud-upload-outline" size={20} color={colors.white} />
+                      <Text style={styles.pushButtonText}>Push to Shopify</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <View style={styles.noConnectionCard}>
+                <Ionicons name="storefront-outline" size={24} color={colors.textSecondary} />
+                <Text style={styles.noConnectionText}>
+                  Connect your Shopify store in Settings to push products.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         <View style={styles.bottomSpacer} />
       </ScrollView>
     </SafeAreaView>
@@ -364,6 +433,50 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.textSecondary,
     textAlign: 'center',
+  },
+  shopifySection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.xl,
+  },
+  draftRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md,
+  },
+  draftLabel: {
+    fontSize: fontSize.md,
+    color: colors.text,
+  },
+  pushButton: {
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
+  },
+  pushButtonDisabled: {
+    opacity: 0.6,
+  },
+  pushButtonText: {
+    color: colors.white,
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+  },
+  noConnectionCard: {
+    backgroundColor: colors.backgroundTertiary,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  noConnectionText: {
+    flex: 1,
+    fontSize: fontSize.sm,
+    color: colors.textSecondary,
   },
   bottomSpacer: {
     height: spacing.xxxl,
