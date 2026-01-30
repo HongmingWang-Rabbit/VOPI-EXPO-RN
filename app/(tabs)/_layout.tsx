@@ -1,10 +1,14 @@
+import { StyleSheet } from 'react-native';
 import { Tabs, Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/contexts/AuthContext';
-import { colors } from '../../src/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import { useProcessingJobs } from '../../src/hooks/useProcessingJobs';
 
 export default function TabLayout() {
   const { isAuthenticated } = useAuth();
+  const { colors } = useTheme();
+  const processingCount = useProcessingJobs();
 
   // If user is not authenticated, redirect to login
   if (!isAuthenticated) {
@@ -16,8 +20,11 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textTertiary,
         tabBarStyle: {
-          borderTopWidth: 0,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border,
+          backgroundColor: colors.background,
           elevation: 0,
         },
       }}
@@ -47,6 +54,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cube" size={size} color={color} />
           ),
+          tabBarBadge: processingCount > 0 ? processingCount : undefined,
         }}
       />
       <Tabs.Screen

@@ -1,7 +1,8 @@
 import React, { memo, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { UploadState } from '../../types/vopi.types';
-import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { spacing, borderRadius, fontSize, fontWeight } from '../../theme';
 
 interface UploadProgressProps {
   state: UploadState;
@@ -9,6 +10,8 @@ interface UploadProgressProps {
 }
 
 function UploadProgressComponent({ state, onCancel }: UploadProgressProps) {
+  const { colors } = useTheme();
+
   // Memoize computed values
   const { isActive, progressPercent, statusText, accessibleText } = useMemo(() => {
     // Normalize progress to 0-1 range
@@ -56,7 +59,7 @@ function UploadProgressComponent({ state, onCancel }: UploadProgressProps) {
 
   return (
     <View
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.backgroundSecondary }]}
       accessibilityRole="progressbar"
       accessibilityLabel="Upload progress indicator"
       accessibilityValue={{
@@ -66,13 +69,13 @@ function UploadProgressComponent({ state, onCancel }: UploadProgressProps) {
         text: accessibleText,
       }}
     >
-      <Text style={styles.statusText}>{statusText}</Text>
+      <Text style={[styles.statusText, { color: colors.text }]}>{statusText}</Text>
 
       {isActive && (
         <>
-          <View style={styles.progressBar}>
+          <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
             <View
-              style={[styles.progressFill, { width: `${progressPercent}%` }]}
+              style={[styles.progressFill, { width: `${progressPercent}%`, backgroundColor: colors.primary }]}
             />
           </View>
 
@@ -82,7 +85,7 @@ function UploadProgressComponent({ state, onCancel }: UploadProgressProps) {
             accessibilityRole="button"
             accessibilityLabel="Cancel upload"
           >
-            <Text style={styles.cancelText}>Cancel</Text>
+            <Text style={[styles.cancelText, { color: colors.error }]}>Cancel</Text>
           </TouchableOpacity>
         </>
       )}
@@ -93,33 +96,28 @@ function UploadProgressComponent({ state, onCancel }: UploadProgressProps) {
 const styles = StyleSheet.create({
   container: {
     padding: spacing.lg,
-    backgroundColor: colors.backgroundSecondary,
     borderRadius: borderRadius.lg,
     marginVertical: spacing.lg,
   },
   statusText: {
     fontSize: fontSize.sm,
-    color: colors.text,
     marginBottom: spacing.md,
     textAlign: 'center',
   },
   progressBar: {
-    height: 8,
-    backgroundColor: colors.borderDark,
-    borderRadius: borderRadius.sm,
+    height: 6,
+    borderRadius: borderRadius.full,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.full,
   },
   cancelButton: {
     marginTop: spacing.md,
     alignItems: 'center',
   },
   cancelText: {
-    color: colors.error,
     fontSize: fontSize.sm,
     fontWeight: fontWeight.medium,
   },

@@ -1,26 +1,34 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Switch } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { vopiService } from '../src/services/vopi.service';
-import { DownloadUrlsResponse, Job, ProductMetadata } from '../src/types/vopi.types';
+import { DownloadUrlsResponse, Job, PlatformConnection, ProductMetadata } from '../src/types/vopi.types';
 import { useConnections } from '../src/hooks/useConnections';
+import { useTheme } from '../src/contexts/ThemeContext';
+import { useToast } from '../src/contexts/ToastContext';
+import { haptics } from '../src/utils/haptics';
 import { FlatImageGallery } from '../src/components/product/FlatImageGallery';
 import { EditableField } from '../src/components/product/EditableField';
-import { colors, spacing, borderRadius, fontSize, fontWeight } from '../src/theme';
+import { SkeletonResultsPage } from '../src/components/ui/SkeletonResultsPage';
+import { spacing, borderRadius, fontSize, fontWeight, shadows } from '../src/theme';
+
+const BACK_ICON_SIZE = 24;
 
 export default function ResultsScreen() {
   const router = useRouter();
   const { jobId } = useLocalSearchParams<{ jobId: string }>();
+  const { colors } = useTheme();
+  const { showToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [downloadUrls, setDownloadUrls] = useState<DownloadUrlsResponse | null>(null);
   const [metadata, setMetadata] = useState<ProductMetadata | null>(null);
   const [publishAsDraft, setPublishAsDraft] = useState(true);
-  const [pushing, setPushing] = useState(false);
-  const { activeShopifyConnection, loading: connectionsLoading } = useConnections();
+  const [pushingPlatform, setPushingPlatform] = useState<string | null>(null);
+  const { activeShopifyConnection, activeAmazonConnection, loading: connectionsLoading } = useConnections();
 
   const fetchResults = useCallback(async () => {
     if (!jobId) return;
@@ -85,54 +93,62 @@ export default function ResultsScreen() {
     [jobId]
   );
 
-  const handlePushToShopify = useCallback(async () => {
-    if (!jobId || !activeShopifyConnection) return;
+  const handlePushToPlatform = useCallback(async (connection: PlatformConnection, platformName: string, draft?: boolean) => {
+    if (!jobId) return;
+    haptics.light();
     try {
-      setPushing(true);
+      setPushingPlatform(connection.platform);
       const { confidence: _, ...productFields } = metadata?.product ?? {} as ProductMetadata['product'];
       const response = await vopiService.pushToListing({
         jobId,
-        connectionId: activeShopifyConnection.id,
+        connectionId: connection.id,
         options: {
-          publishAsDraft,
+          ...(draft !== undefined && { publishAsDraft: draft }),
           overrideMetadata: productFields,
         },
       });
-      Alert.alert('Success', `Product pushed to Shopify (${response.status}).`);
+      haptics.success();
+      showToast(`Product pushed to ${platformName} (${response.status}).`, 'success');
     } catch (err) {
+      haptics.error();
       const message = err instanceof Error ? err.message : 'Unknown error';
-      Alert.alert('Push Failed', message);
+      showToast(`Push failed: ${message}`, 'error');
     } finally {
-      setPushing(false);
+      setPushingPlatform(null);
     }
-  }, [jobId, activeShopifyConnection, publishAsDraft, metadata]);
+  }, [jobId, metadata, showToast]);
 
   const product = metadata?.product;
   const title = product?.title || `Job #${jobId?.slice(0, 8)}`;
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading results...</Text>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { backgroundColor: colors.background }]}>
+          <TouchableOpacity onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
+            <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color={colors.text} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]} accessibilityRole="header">Results</Text>
+          <View style={styles.headerSpacer} />
         </View>
+        <SkeletonResultsPage />
       </SafeAreaView>
     );
   }
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle} accessibilityRole="header">Results</Text>
-          <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
-            <Text style={styles.closeButton}>Close</Text>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.header, { backgroundColor: colors.background }]}>
+          <TouchableOpacity onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
+            <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color={colors.text} />
           </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.text }]} accessibilityRole="header">Results</Text>
+          <View style={styles.headerSpacer} />
         </View>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchResults}>
+          <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={fetchResults}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -141,14 +157,15 @@ export default function ResultsScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
+        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
+          <Ionicons name="chevron-back" size={BACK_ICON_SIZE} color={colors.text} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.text }]} numberOfLines={1} accessibilityRole="header">
           {title}
         </Text>
-        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button">
-          <Text style={styles.closeButton}>Done</Text>
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -164,7 +181,7 @@ export default function ResultsScreen() {
           </View>
         ) : (
           <View style={styles.emptyImages}>
-            <Text style={styles.emptyText}>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
               {job?.status === 'completed'
                 ? 'No commercial images were generated.'
                 : `Job status: ${job?.status || 'unknown'}`}
@@ -175,142 +192,49 @@ export default function ResultsScreen() {
         {/* Editable Metadata */}
         {product && (
           <View style={styles.metadataSection}>
-            <Text style={styles.sectionTitle}>Product Details</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Product Details</Text>
 
-            <EditableField
-              label="Title"
-              value={product.title}
-              onSave={(v) => saveField('title', v)}
-            />
-            <EditableField
-              label="Description"
-              value={product.description}
-              onSave={(v) => saveField('description', v)}
-              multiline
-            />
-            <EditableField
-              label="Short Description"
-              value={product.shortDescription}
-              onSave={(v) => saveField('shortDescription', v)}
-            />
-            <EditableField
-              label="Brand"
-              value={product.brand}
-              onSave={(v) => saveField('brand', v)}
-            />
-            <EditableField
-              label="Category"
-              value={product.category}
-              onSave={(v) => saveField('category', v)}
-            />
-            <EditableField
-              label="Color"
-              value={product.color}
-              onSave={(v) => saveField('color', v)}
-            />
-            <EditableField
-              label="Price"
-              value={product.price}
-              onSave={(v) => saveField('price', v)}
-              isNumber
-            />
-            <EditableField
-              label="Currency"
-              value={product.currency}
-              onSave={(v) => saveField('currency', v)}
-            />
-            <EditableField
-              label="Compare At Price"
-              value={product.compareAtPrice}
-              onSave={(v) => saveField('compareAtPrice', v)}
-              isNumber
-            />
-            <EditableField
-              label="Cost Per Item"
-              value={product.costPerItem}
-              onSave={(v) => saveField('costPerItem', v)}
-              isNumber
-            />
+            <EditableField label="Title" value={product.title} onSave={(v) => saveField('title', v)} />
+            <EditableField label="Description" value={product.description} onSave={(v) => saveField('description', v)} multiline />
+            <EditableField label="Short Description" value={product.shortDescription} onSave={(v) => saveField('shortDescription', v)} />
+            <EditableField label="Brand" value={product.brand} onSave={(v) => saveField('brand', v)} />
+            <EditableField label="Category" value={product.category} onSave={(v) => saveField('category', v)} />
+            <EditableField label="Color" value={product.color} onSave={(v) => saveField('color', v)} />
+            <EditableField label="Price" value={product.price} onSave={(v) => saveField('price', v)} isNumber />
+            <EditableField label="Currency" value={product.currency} onSave={(v) => saveField('currency', v)} />
+            <EditableField label="Compare At Price" value={product.compareAtPrice} onSave={(v) => saveField('compareAtPrice', v)} isNumber />
+            <EditableField label="Cost Per Item" value={product.costPerItem} onSave={(v) => saveField('costPerItem', v)} isNumber />
 
-            <Text style={[styles.sectionTitle, { marginTop: spacing.xl }]}>Demographics</Text>
+            <Text style={[styles.sectionTitle, { marginTop: spacing.xl, color: colors.text }]}>Demographics</Text>
 
-            <EditableField
-              label="Gender"
-              value={product.gender}
-              onSave={(v) => saveField('gender', v)}
-            />
-            <EditableField
-              label="Target Audience"
-              value={product.targetAudience}
-              onSave={(v) => saveField('targetAudience', v)}
-            />
-            <EditableField
-              label="Age Group"
-              value={product.ageGroup}
-              onSave={(v) => saveField('ageGroup', v)}
-            />
-            <EditableField
-              label="Style"
-              value={product.style}
-              onSave={(v) => saveField('style', v)}
-            />
-            <EditableField
-              label="Model Number"
-              value={product.modelNumber}
-              onSave={(v) => saveField('modelNumber', v)}
-            />
-            <EditableField
-              label="Manufacturer"
-              value={product.manufacturer}
-              onSave={(v) => saveField('manufacturer', v)}
-            />
-            <EditableField
-              label="Country of Origin"
-              value={product.countryOfOrigin}
-              onSave={(v) => saveField('countryOfOrigin', v)}
-            />
-            <EditableField
-              label="Pattern"
-              value={product.pattern}
-              onSave={(v) => saveField('pattern', v)}
-            />
-            <EditableField
-              label="Product Type"
-              value={product.productType}
-              onSave={(v) => saveField('productType', v)}
-            />
+            <EditableField label="Gender" value={product.gender} onSave={(v) => saveField('gender', v)} />
+            <EditableField label="Target Audience" value={product.targetAudience} onSave={(v) => saveField('targetAudience', v)} />
+            <EditableField label="Age Group" value={product.ageGroup} onSave={(v) => saveField('ageGroup', v)} />
+            <EditableField label="Style" value={product.style} onSave={(v) => saveField('style', v)} />
+            <EditableField label="Model Number" value={product.modelNumber} onSave={(v) => saveField('modelNumber', v)} />
+            <EditableField label="Manufacturer" value={product.manufacturer} onSave={(v) => saveField('manufacturer', v)} />
+            <EditableField label="Country of Origin" value={product.countryOfOrigin} onSave={(v) => saveField('countryOfOrigin', v)} />
+            <EditableField label="Pattern" value={product.pattern} onSave={(v) => saveField('pattern', v)} />
+            <EditableField label="Product Type" value={product.productType} onSave={(v) => saveField('productType', v)} />
 
-            <Text style={[styles.sectionTitle, { marginTop: spacing.xl }]}>Lists</Text>
+            <Text style={[styles.sectionTitle, { marginTop: spacing.xl, color: colors.text }]}>Lists</Text>
 
-            <EditableField
-              label="Bullet Points"
-              value={product.bulletPoints}
-              onSave={(v) => saveField('bulletPoints', v)}
-              isArray
-            />
-            <EditableField
-              label="Materials"
-              value={product.materials}
-              onSave={(v) => saveField('materials', v)}
-              isArray
-            />
-            <EditableField
-              label="Keywords"
-              value={product.keywords}
-              onSave={(v) => saveField('keywords', v)}
-              isArray
-            />
+            <EditableField label="Bullet Points" value={product.bulletPoints} onSave={(v) => saveField('bulletPoints', v)} isArray />
+            <EditableField label="Materials" value={product.materials} onSave={(v) => saveField('materials', v)} isArray />
+            <EditableField label="Keywords" value={product.keywords} onSave={(v) => saveField('keywords', v)} isArray />
           </View>
         )}
 
-        {/* Push to Shopify */}
+        {/* Push to Platforms */}
         {job?.status === 'completed' && !connectionsLoading && (
           <View style={styles.shopifySection}>
-            <Text style={styles.sectionTitle}>Push to Shopify</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Push to Platform</Text>
+
+            {/* Shopify */}
             {activeShopifyConnection ? (
               <>
                 <View style={styles.draftRow}>
-                  <Text style={styles.draftLabel}>Publish as draft</Text>
+                  <Text style={[styles.draftLabel, { color: colors.text }]}>Shopify: publish as draft</Text>
                   <Switch
                     value={publishAsDraft}
                     onValueChange={setPublishAsDraft}
@@ -318,27 +242,54 @@ export default function ResultsScreen() {
                   />
                 </View>
                 <TouchableOpacity
-                  style={[styles.pushButton, pushing && styles.pushButtonDisabled]}
-                  onPress={handlePushToShopify}
-                  disabled={pushing}
+                  style={[styles.pushButton, { backgroundColor: colors.primary }, pushingPlatform === 'shopify' && styles.pushButtonDisabled]}
+                  onPress={() => handlePushToPlatform(activeShopifyConnection, 'Shopify', publishAsDraft)}
+                  disabled={pushingPlatform !== null}
                   accessibilityRole="button"
                   accessibilityLabel="Push product to Shopify"
                 >
-                  {pushing ? (
-                    <ActivityIndicator size="small" color={colors.white} />
+                  {pushingPlatform === 'shopify' ? (
+                    <View style={styles.pushButtonContent}>
+                      <Text style={styles.pushButtonText}>Pushing...</Text>
+                    </View>
                   ) : (
-                    <>
-                      <Ionicons name="cloud-upload-outline" size={20} color={colors.white} />
+                    <View style={styles.pushButtonContent}>
+                      <Ionicons name="cloud-upload-outline" size={20} color="#FFFFFF" />
                       <Text style={styles.pushButtonText}>Push to Shopify</Text>
-                    </>
+                    </View>
                   )}
                 </TouchableOpacity>
               </>
-            ) : (
-              <View style={styles.noConnectionCard}>
+            ) : null}
+
+            {/* Amazon */}
+            {activeAmazonConnection ? (
+              <TouchableOpacity
+                style={[styles.pushButton, { backgroundColor: colors.primary }, pushingPlatform === 'amazon' && styles.pushButtonDisabled, styles.pushButtonSpaced]}
+                onPress={() => handlePushToPlatform(activeAmazonConnection, 'Amazon')}
+                disabled={pushingPlatform !== null}
+                accessibilityRole="button"
+                accessibilityLabel="Push product to Amazon"
+              >
+                {pushingPlatform === 'amazon' ? (
+                  <View style={styles.pushButtonContent}>
+                    <Text style={styles.pushButtonText}>Pushing...</Text>
+                  </View>
+                ) : (
+                  <View style={styles.pushButtonContent}>
+                    <Ionicons name="cloud-upload-outline" size={20} color="#FFFFFF" />
+                    <Text style={styles.pushButtonText}>Push to Amazon</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ) : null}
+
+            {/* No connections */}
+            {!activeShopifyConnection && !activeAmazonConnection && (
+              <View style={[styles.noConnectionCard, { backgroundColor: colors.primaryBackground, borderColor: colors.border }]}>
                 <Ionicons name="storefront-outline" size={24} color={colors.textSecondary} />
-                <Text style={styles.noConnectionText}>
-                  Connect your Shopify store in Settings to push products.
+                <Text style={[styles.noConnectionText, { color: colors.textSecondary }]}>
+                  Connect a platform in Settings to push products.
                 </Text>
               </View>
             )}
@@ -354,7 +305,6 @@ export default function ResultsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.white,
   },
   scroll: {
     flex: 1,
@@ -364,20 +314,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    ...shadows.sm,
   },
   headerTitle: {
     fontSize: fontSize.xl,
     fontWeight: fontWeight.semibold,
-    color: colors.text,
     flex: 1,
-    marginRight: spacing.md,
+    textAlign: 'center',
+    marginHorizontal: spacing.sm,
   },
-  closeButton: {
-    color: colors.primary,
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
+  headerSpacer: {
+    width: BACK_ICON_SIZE,
   },
   section: {
     paddingTop: spacing.lg,
@@ -389,18 +336,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: fontSize.lg,
     fontWeight: fontWeight.semibold,
-    color: colors.text,
     marginBottom: spacing.sm,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.lg,
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
@@ -410,18 +346,16 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: fontSize.md,
-    color: colors.error,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
   retryButton: {
-    backgroundColor: colors.primary,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
   },
   retryButtonText: {
-    color: colors.white,
+    color: '#FFFFFF',
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
   },
@@ -431,7 +365,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
     textAlign: 'center',
   },
   shopifySection: {
@@ -446,37 +379,40 @@ const styles = StyleSheet.create({
   },
   draftLabel: {
     fontSize: fontSize.md,
-    color: colors.text,
   },
   pushButton: {
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.lg,
     borderRadius: borderRadius.lg,
+  },
+  pushButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
   },
   pushButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.5,
+  },
+  pushButtonSpaced: {
+    marginTop: spacing.sm,
   },
   pushButtonText: {
-    color: colors.white,
+    color: '#FFFFFF',
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
   },
   noConnectionCard: {
-    backgroundColor: colors.backgroundTertiary,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    borderWidth: 1,
   },
   noConnectionText: {
     flex: 1,
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
   },
   bottomSpacer: {
     height: spacing.xxxl,

@@ -8,16 +8,27 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  LayoutAnimation,
+  UIManager,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Swipeable } from 'react-native-gesture-handler';
 import { vopiService } from '../../src/services/vopi.service';
 import { Job, JobStatus } from '../../src/types/vopi.types';
-import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../src/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import { haptics } from '../../src/utils/haptics';
+import { SkeletonProductCard } from '../../src/components/ui/SkeletonProductCard';
+import { spacing, borderRadius, fontSize, fontWeight, shadows } from '../../src/theme';
 import { capitalizeFirst, formatDate, toCacheKey } from '../../src/utils/strings';
 import { VOPIConfig } from '../../src/config/vopi.config';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const JOBS_LIMIT = 50;
 const POLL_INTERVAL = VOPIConfig.pollingInterval + 2000;
@@ -85,6 +96,7 @@ async function enrichInBatches(
 export default function ProductsScreen() {
   const router = useRouter();
   const pathname = usePathname();
+  const { colors } = useTheme();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [jobStatuses, setJobStatuses] = useState<Record<string, JobStatus>>({});
   const [enriched, setEnriched] = useState<Record<string, EnrichedData>>({});
@@ -95,6 +107,7 @@ export default function ProductsScreen() {
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
   const enrichedIdsRef = useRef<Set<string>>(new Set());
+  const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -225,39 +238,65 @@ export default function ProductsScreen() {
     }
   };
 
+  const performDelete = useCallback(
+    async (job: Job) => {
+      haptics.medium();
+      setDeletingIds((prev) => new Set(prev).add(job.id));
+      try {
+        await vopiService.deleteJob(job.id);
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setJobs((prev) => prev.filter((j) => j.id !== job.id));
+        setEnriched((prev) => {
+          const next = { ...prev };
+          delete next[job.id];
+          return next;
+        });
+        enrichedIdsRef.current.delete(job.id);
+      } catch (err) {
+        Alert.alert('Delete Failed', err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        setDeletingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(job.id);
+          return next;
+        });
+      }
+    },
+    []
+  );
+
   const handleDelete = useCallback(
     (job: Job) => {
       const title = enriched[job.id]?.title || `Job #${job.id.slice(0, 8)}`;
+      haptics.light();
       Alert.alert('Delete Product', `Are you sure you want to delete "${title}"?`, [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            setDeletingIds((prev) => new Set(prev).add(job.id));
-            try {
-              await vopiService.deleteJob(job.id);
-              setJobs((prev) => prev.filter((j) => j.id !== job.id));
-              setEnriched((prev) => {
-                const next = { ...prev };
-                delete next[job.id];
-                return next;
-              });
-              enrichedIdsRef.current.delete(job.id);
-            } catch (err) {
-              Alert.alert('Delete Failed', err instanceof Error ? err.message : 'Unknown error');
-            } finally {
-              setDeletingIds((prev) => {
-                const next = new Set(prev);
-                next.delete(job.id);
-                return next;
-              });
-            }
-          },
+          onPress: () => performDelete(job),
         },
       ]);
     },
-    [enriched]
+    [enriched, performDelete]
+  );
+
+  const renderRightActions = useCallback(
+    (job: Job) => (
+      <TouchableOpacity
+        style={[styles.swipeDeleteAction, { backgroundColor: colors.error }]}
+        onPress={() => {
+          swipeableRefs.current.get(job.id)?.close();
+          handleDelete(job);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="Delete"
+      >
+        <Ionicons name="trash-outline" size={24} color="#FFFFFF" />
+        <Text style={styles.swipeDeleteText}>Delete</Text>
+      </TouchableOpacity>
+    ),
+    [colors.error, handleDelete]
   );
 
   const renderItem = ({ item }: { item: Job }) => {
@@ -272,11 +311,12 @@ export default function ProductsScreen() {
     const progressPercent = detailedStatus?.progress?.percentage ?? 0;
     const progressStep = detailedStatus?.progress?.step || detailedStatus?.progress?.message;
 
-    return (
+    const cardContent = (
       <TouchableOpacity
-        style={[styles.card, isDeleting && styles.cardDeleting]}
+        style={[styles.card, { backgroundColor: colors.background }, isDeleting && styles.cardDeleting]}
         onPress={() => {
           if (isCompleted && !isDeleting) {
+            haptics.light();
             router.push({ pathname: '/results', params: { jobId: item.id } });
           }
         }}
@@ -287,7 +327,7 @@ export default function ProductsScreen() {
         accessibilityHint={isCompleted ? 'Tap to view product details' : undefined}
       >
         {isDeleting && (
-          <View style={styles.deletingOverlay}>
+          <View style={[styles.deletingOverlay, { backgroundColor: colors.overlayLight }]}>
             <ActivityIndicator size="large" color={colors.error} />
           </View>
         )}
@@ -297,7 +337,7 @@ export default function ProductsScreen() {
           {data?.thumbnail ? (
             <Image source={{ uri: data.thumbnail, cacheKey: toCacheKey(data.thumbnail) }} style={styles.thumbnail} contentFit="cover" cachePolicy="disk" />
           ) : (
-            <View style={styles.thumbnailPlaceholder}>
+            <View style={[styles.thumbnailPlaceholder, { backgroundColor: colors.backgroundSecondary }]}>
               <Ionicons
                 name={isCompleted ? 'image-outline' : 'cube-outline'}
                 size={28}
@@ -309,22 +349,22 @@ export default function ProductsScreen() {
 
         {/* Info */}
         <View style={styles.cardBody}>
-          <Text style={styles.cardTitle} numberOfLines={2}>
+          <Text style={[styles.cardTitle, { color: colors.text }]} numberOfLines={2}>
             {cardTitle}
           </Text>
-          <Text style={styles.cardDate}>{dateStr}</Text>
+          <Text style={[styles.cardDate, { color: colors.textSecondary }]}>{dateStr}</Text>
 
           {isProcessing && progressPercent > 0 && (
             <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+              <View style={[styles.progressBar, { backgroundColor: colors.border }]}>
+                <View style={[styles.progressFill, { width: `${progressPercent}%`, backgroundColor: colors.primary }]} />
               </View>
             </View>
           )}
 
           {!isCompleted && (
             <View style={styles.badgeRow}>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status), minHeight: 24, justifyContent: 'center' }]}>
                 <Text style={styles.statusText}>
                   {isProcessing && progressStep ? capitalizeFirst(progressStep) : item.status}
                 </Text>
@@ -340,7 +380,7 @@ export default function ProductsScreen() {
           <TouchableOpacity
             onPress={() => handleDelete(item)}
             style={styles.deleteBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             accessibilityRole="button"
             accessibilityLabel={`Delete ${cardTitle}`}
           >
@@ -353,38 +393,53 @@ export default function ProductsScreen() {
         )}
       </TouchableOpacity>
     );
+
+    return (
+      <Swipeable
+        ref={(ref) => {
+          if (ref) swipeableRefs.current.set(item.id, ref);
+          else swipeableRefs.current.delete(item.id);
+        }}
+        renderRightActions={() => renderRightActions(item)}
+        overshootRight={false}
+      >
+        {cardContent}
+      </Swipeable>
+    );
   };
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="cube-outline" size={64} color={colors.borderDark} />
-      <Text style={styles.emptyTitle}>No Products Yet</Text>
-      <Text style={styles.emptyText}>Process a video to see your products here</Text>
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>No Products Yet</Text>
+      <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Process a video to see your products here</Text>
     </View>
   );
 
   const renderError = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="alert-circle-outline" size={64} color={colors.error} />
-      <Text style={styles.emptyTitle}>Failed to Load</Text>
-      <Text style={styles.emptyText}>{error}</Text>
-      <TouchableOpacity style={styles.retryButton} onPress={fetchJobs}>
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>Failed to Load</Text>
+      <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{error}</Text>
+      <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={fetchJobs}>
         <Text style={styles.retryButtonText}>Retry</Text>
       </TouchableOpacity>
     </View>
   );
 
   const renderLoading = () => (
-    <View style={styles.emptyContainer}>
-      <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={styles.loadingText}>Loading products...</Text>
+    <View style={styles.skeletonContainer}>
+      <SkeletonProductCard />
+      <SkeletonProductCard />
+      <SkeletonProductCard />
+      <SkeletonProductCard />
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle} accessibilityRole="header">Products</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.backgroundSecondary }]}>
+      <View style={[styles.header, { backgroundColor: colors.background }]}>
+        <Text style={[styles.headerTitle, { color: colors.text }]} accessibilityRole="header">Products</Text>
       </View>
 
       <FlatList
@@ -393,7 +448,7 @@ export default function ProductsScreen() {
         keyExtractor={(item) => item.id}
         extraData={deletingIds}
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         ListEmptyComponent={loading ? renderLoading() : error ? renderError() : renderEmpty()}
       />
     </SafeAreaView>
@@ -403,18 +458,14 @@ export default function ProductsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
   },
   header: {
     padding: spacing.lg,
-    backgroundColor: colors.white,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    ...shadows.sm,
   },
   headerTitle: {
     fontSize: fontSize.xxl,
     fontWeight: fontWeight.bold,
-    color: colors.text,
   },
   listContent: {
     padding: spacing.lg,
@@ -423,31 +474,25 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
     marginBottom: spacing.md,
     padding: spacing.md,
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 2,
+    ...shadows.md,
   },
   thumbnailContainer: {
-    width: 72,
-    height: 72,
+    width: 80,
+    height: 80,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
     marginRight: spacing.md,
   },
   thumbnail: {
-    width: 72,
-    height: 72,
+    width: 80,
+    height: 80,
   },
   thumbnailPlaceholder: {
-    width: 72,
-    height: 72,
-    backgroundColor: colors.backgroundSecondary,
+    width: 80,
+    height: 80,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -457,12 +502,10 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
-    color: colors.text,
     marginBottom: spacing.xs,
   },
   cardDate: {
     fontSize: fontSize.xs,
-    color: colors.textSecondary,
     marginBottom: spacing.xs,
   },
   badgeRow: {
@@ -473,11 +516,11 @@ const styles = StyleSheet.create({
   statusBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xs,
     borderRadius: 6,
   },
   statusText: {
-    color: colors.white,
+    color: '#FFFFFF',
     fontSize: fontSize.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'capitalize',
@@ -489,22 +532,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   progressBar: {
-    height: 3,
-    backgroundColor: colors.border,
-    borderRadius: 2,
+    height: 4,
+    borderRadius: borderRadius.full,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: colors.primary,
-    borderRadius: 2,
+    borderRadius: borderRadius.full,
   },
   cardDeleting: {
     opacity: 0.5,
   },
   deletingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,
@@ -517,6 +557,23 @@ const styles = StyleSheet.create({
   chevron: {
     marginLeft: spacing.xs,
   },
+  swipeDeleteAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+    marginLeft: spacing.xs,
+  },
+  swipeDeleteText: {
+    color: '#FFFFFF',
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.semibold,
+    marginTop: spacing.xs,
+  },
+  skeletonContainer: {
+    paddingVertical: spacing.lg,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -528,27 +585,19 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
-    color: colors.text,
   },
   emptyText: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
     textAlign: 'center',
-  },
-  loadingText: {
-    marginTop: spacing.lg,
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
   },
   retryButton: {
     marginTop: spacing.lg,
-    backgroundColor: colors.primary,
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
   },
   retryButtonText: {
-    color: colors.white,
+    color: '#FFFFFF',
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
   },

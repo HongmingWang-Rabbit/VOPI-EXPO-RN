@@ -6,9 +6,18 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  LayoutAnimation,
+  UIManager,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { haptics } from '../../utils/haptics';
+import { spacing, borderRadius, fontSize, fontWeight } from '../../theme';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 interface EditableFieldProps {
   label: string;
@@ -20,6 +29,7 @@ interface EditableFieldProps {
 }
 
 function EditableFieldComponent({ label, value, onSave, multiline, isArray, isNumber }: EditableFieldProps) {
+  const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState('');
@@ -30,16 +40,19 @@ function EditableFieldComponent({ label, value, onSave, multiline, isArray, isNu
     : String(value ?? '');
 
   const startEdit = useCallback(() => {
+    haptics.selection();
     if (isArray) {
       setDraft((value as string[] | undefined)?.join('\n') || '');
     } else {
       setDraft(String(value ?? ''));
     }
     setValidationError(null);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setEditing(true);
   }, [value, isArray]);
 
   const cancel = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setEditing(false);
     setValidationError(null);
   }, []);
@@ -65,6 +78,7 @@ function EditableFieldComponent({ label, value, onSave, multiline, isArray, isNu
       }
       setDraft(isArray ? draft : trimmed);
       await onSave(parsed);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setEditing(false);
     } catch {
       // Keep editing open on error — parent shows Alert
@@ -76,7 +90,7 @@ function EditableFieldComponent({ label, value, onSave, multiline, isArray, isNu
   if (!editing) {
     return (
       <TouchableOpacity
-        style={styles.field}
+        style={[styles.field, { borderBottomColor: colors.border, minHeight: 48 }]}
         onPress={startEdit}
         activeOpacity={0.7}
         accessibilityRole="button"
@@ -84,27 +98,28 @@ function EditableFieldComponent({ label, value, onSave, multiline, isArray, isNu
         accessibilityHint="Double tap to edit this field"
       >
         <View style={styles.fieldHeader}>
-          <Text style={styles.label}>{label}</Text>
+          <Text style={[styles.label, { color: colors.textTertiary }]}>{label}</Text>
           <Ionicons name="pencil-outline" size={14} color={colors.textTertiary} />
         </View>
-        <Text style={styles.value} numberOfLines={multiline || isArray ? 4 : 1}>
-          {displayValue || '—'}
+        <Text style={[styles.value, { color: colors.text }]} numberOfLines={multiline || isArray ? 4 : 1}>
+          {displayValue || '\u2014'}
         </Text>
       </TouchableOpacity>
     );
   }
 
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+    <View style={[styles.field, { borderBottomColor: colors.border, backgroundColor: colors.primaryBackground, marginHorizontal: -spacing.md, paddingHorizontal: spacing.md, borderRadius: borderRadius.md }]}>
+      <Text style={[styles.label, { color: colors.textTertiary }]}>{label}</Text>
       {isArray && (
-        <Text style={styles.hint}>One item per line</Text>
+        <Text style={[styles.hint, { color: colors.textTertiary }]}>One item per line</Text>
       )}
       <TextInput
         style={[
           styles.input,
+          { color: colors.text, borderColor: colors.primaryLight, backgroundColor: colors.background },
           (multiline || isArray) && styles.inputMultiline,
-          validationError ? styles.inputError : undefined,
+          validationError ? { borderColor: colors.error } : undefined,
         ]}
         value={draft}
         onChangeText={(text) => {
@@ -119,7 +134,7 @@ function EditableFieldComponent({ label, value, onSave, multiline, isArray, isNu
         accessibilityHint={isArray ? 'Enter one item per line' : undefined}
       />
       {validationError && (
-        <Text style={styles.errorText}>{validationError}</Text>
+        <Text style={[styles.errorText, { color: colors.error }]}>{validationError}</Text>
       )}
       <View style={styles.actions}>
         {saving ? (
@@ -132,11 +147,11 @@ function EditableFieldComponent({ label, value, onSave, multiline, isArray, isNu
               accessibilityRole="button"
               accessibilityLabel={`Cancel editing ${label}`}
             >
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={save}
-              style={[styles.actionBtn, styles.saveBtn]}
+              style={[styles.actionBtn, { backgroundColor: colors.primary }]}
               accessibilityRole="button"
               accessibilityLabel={`Save ${label}`}
             >
@@ -155,7 +170,6 @@ const styles = StyleSheet.create({
   field: {
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
   },
   fieldHeader: {
     flexDirection: 'row',
@@ -165,41 +179,32 @@ const styles = StyleSheet.create({
   label: {
     fontSize: fontSize.xs,
     fontWeight: fontWeight.medium,
-    color: colors.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: spacing.xs,
   },
   hint: {
     fontSize: fontSize.xs,
-    color: colors.textTertiary,
     fontStyle: 'italic',
     marginBottom: spacing.xs,
   },
   value: {
     fontSize: fontSize.sm,
-    color: colors.text,
     lineHeight: 20,
   },
   input: {
     fontSize: fontSize.sm,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    borderWidth: 1.5,
     borderRadius: borderRadius.md,
     padding: spacing.sm,
-    backgroundColor: colors.white,
+    minHeight: 48,
   },
   inputMultiline: {
     minHeight: 80,
     textAlignVertical: 'top',
   },
-  inputError: {
-    borderColor: colors.error,
-  },
   errorText: {
     fontSize: fontSize.xs,
-    color: colors.error,
     marginTop: spacing.xs,
   },
   actions: {
@@ -209,20 +214,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   actionBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
   },
   cancelText: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
-  },
-  saveBtn: {
-    backgroundColor: colors.primary,
+    fontWeight: fontWeight.medium,
   },
   saveText: {
     fontSize: fontSize.sm,
-    color: colors.white,
+    color: '#FFFFFF',
     fontWeight: fontWeight.medium,
   },
 });

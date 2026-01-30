@@ -16,7 +16,9 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
-import { colors, spacing, borderRadius, fontSize } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { ZoomableImage } from '../ui/ZoomableImage';
+import { spacing, borderRadius, fontSize } from '../../theme';
 import { toCacheKey } from '../../utils/strings';
 
 interface ImageEntry {
@@ -45,6 +47,7 @@ const MAX_DOTS = 7;
 
 function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: FlatImageGalleryProps) {
   const { width: screenWidth } = useWindowDimensions();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [selectedEntry, setSelectedEntry] = useState<ImageEntry | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -140,13 +143,13 @@ function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: F
       >
         <Image
           source={{ uri: item.url, cacheKey: toCacheKey(item.url) }}
-          style={[styles.image, { width: imageWidth, height: imageWidth }]}
+          style={[styles.image, { width: imageWidth, height: imageWidth, backgroundColor: colors.backgroundSecondary }]}
           contentFit="cover"
           cachePolicy="disk"
         />
       </TouchableOpacity>
     ),
-    [imageWidth, imageEntries.length]
+    [imageWidth, imageEntries.length, colors.backgroundSecondary]
   );
 
   const keyExtractor = useCallback(
@@ -157,7 +160,7 @@ function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: F
   if (imageEntries.length === 0) {
     return (
       <View style={styles.empty}>
-        <Text style={styles.emptyText}>No images available</Text>
+        <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No images available</Text>
       </View>
     );
   }
@@ -190,12 +193,12 @@ function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: F
                 {imageEntries.map((_, i) => (
                   <View
                     key={i}
-                    style={[styles.dot, i === activeIndex && styles.dotActive]}
+                    style={[styles.dot, { backgroundColor: colors.textTertiary }, i === activeIndex && { backgroundColor: colors.primary, opacity: 1, width: 8, height: 8, borderRadius: 4 }]}
                   />
                 ))}
               </View>
             )}
-            <Text style={styles.counter}>
+            <Text style={[styles.counter, { color: colors.textSecondary }]}>
               {activeIndex + 1} / {imageEntries.length}
             </Text>
           </>
@@ -216,7 +219,7 @@ function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: F
               activeOpacity={0.7}
               style={[
                 styles.thumbnail,
-                i === activeIndex && styles.thumbnailActive,
+                i === activeIndex && { borderColor: colors.primary },
               ]}
             >
               <Image
@@ -239,7 +242,7 @@ function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: F
               accessibilityRole="button"
               accessibilityLabel="Close full screen image"
             >
-              <Ionicons name="close" size={24} color={colors.white} />
+              <Ionicons name="close" size={24} color="#FFFFFF" />
             </TouchableOpacity>
 
             <View style={styles.modalActions}>
@@ -265,26 +268,13 @@ function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: F
                 accessibilityRole="button"
                 accessibilityLabel="Download image"
               >
-                <Ionicons name="download-outline" size={24} color={colors.white} />
+                <Ionicons name="download-outline" size={24} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
           </View>
-          <ScrollView
-            contentContainerStyle={styles.modalImageContainer}
-            maximumZoomScale={3}
-            minimumZoomScale={1}
-            bouncesZoom
-          >
-            {selectedEntry && (
-              <Image
-                source={{ uri: selectedEntry.url, cacheKey: toCacheKey(selectedEntry.url) }}
-                style={[styles.modalImage, { width: screenWidth, height: screenWidth }]}
-                contentFit="contain"
-                cachePolicy="disk"
-                accessibilityLabel="Full size product image"
-              />
-            )}
-          </ScrollView>
+          {selectedEntry && (
+            <ZoomableImage uri={selectedEntry.url} />
+          )}
         </View>
       </Modal>
     </View>
@@ -302,7 +292,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   image: {
-    backgroundColor: colors.backgroundSecondary,
     borderRadius: borderRadius.lg,
   },
   indicatorRow: {
@@ -322,19 +311,10 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.textTertiary,
     opacity: 0.4,
-  },
-  dotActive: {
-    backgroundColor: colors.primary,
-    opacity: 1,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
   counter: {
     fontSize: fontSize.xs,
-    color: colors.textSecondary,
   },
   thumbnailRow: {
     paddingHorizontal: spacing.lg,
@@ -349,9 +329,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
-  thumbnailActive: {
-    borderColor: colors.primary,
-  },
   thumbnailImage: {
     width: '100%',
     height: '100%',
@@ -362,11 +339,10 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: fontSize.sm,
-    color: colors.textTertiary,
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: colors.overlayDark,
+    backgroundColor: 'rgba(0,0,0,0.95)',
     justifyContent: 'center',
   },
   modalHeader: {
@@ -382,13 +358,5 @@ const styles = StyleSheet.create({
   },
   modalBtn: {
     padding: spacing.sm,
-  },
-  modalImageContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalImage: {
-    // dimensions applied inline via style prop
   },
 });

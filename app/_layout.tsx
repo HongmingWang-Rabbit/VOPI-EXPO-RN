@@ -5,10 +5,11 @@ import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
+import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
+import { ToastProvider } from '../src/contexts/ToastContext';
 import { apiClient } from '../src/services/api.client';
 import { WebContainer } from '../src/components/ui/WebContainer';
 import { ErrorBoundary } from '../src/components/ui/ErrorBoundary';
-import { colors } from '../src/theme';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -26,6 +27,7 @@ const queryClient = new QueryClient({
 
 function RootLayoutNav() {
   const { isLoading, getAccessToken } = useAuth();
+  const { colors, isDark } = useTheme();
 
   // Connect API client to auth context - use useLayoutEffect to ensure
   // token getter is set before any children render and make API calls
@@ -44,7 +46,7 @@ function RootLayoutNav() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -60,7 +62,7 @@ function RootLayoutNav() {
         <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: 'Terms of Service' }} />
         <Stack.Screen name="oauth/callback" options={{ headerShown: false }} />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
     </WebContainer>
   );
 }
@@ -70,18 +72,21 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.background,
   },
 });
 
 export default function RootLayout() {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <RootLayoutNav />
-        </AuthProvider>
-      </QueryClientProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <ToastProvider>
+              <RootLayoutNav />
+            </ToastProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
