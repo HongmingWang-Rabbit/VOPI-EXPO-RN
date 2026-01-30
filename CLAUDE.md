@@ -29,13 +29,13 @@ pnpm typecheck        # Run TypeScript type checking
 app/                    # Expo Router pages (file-based routing)
 ├── _layout.tsx         # Root layout with providers (Auth, Query)
 ├── (auth)/             # Unauthenticated routes
-│   └── login.tsx       # OAuth login screen
+│   └── login.tsx       # Animated OAuth login with app icon + sparkles
 ├── (tabs)/             # Protected tab navigation
 │   ├── index.tsx       # Home - video upload
 │   ├── capture.tsx     # Camera recording with tips overlay
 │   ├── products.tsx    # Job history list with delete
 │   └── settings.tsx    # User profile, credits, connected platforms
-├── results.tsx         # Modal for viewing results + push to Shopify
+├── results.tsx         # View results + push to Shopify/Amazon
 └── oauth/
     └── callback.tsx    # Web OAuth callback handler
 
@@ -53,7 +53,7 @@ src/
 ├── hooks/
 │   ├── useVOPIUpload.ts     # Upload flow + polling
 │   ├── useCredits.ts        # Credit balance
-│   ├── useConnections.ts    # Platform connections (Shopify)
+│   ├── useConnections.ts    # Platform connections (Shopify, Amazon)
 │   └── useResponsive.ts     # Responsive design
 ├── components/
 │   ├── ui/                  # Reusable UI components
@@ -61,11 +61,15 @@ src/
 │   │   ├── UploadProgress.tsx
 │   │   ├── VideoPicker.tsx
 │   │   └── WebContainer.tsx
-│   └── product/
-│       ├── EditableField.tsx     # Inline-editable metadata field
-│       └── FlatImageGallery.tsx  # Swipeable carousel with thumbnails
+│   ├── product/
+│   │   ├── EditableField.tsx     # Inline-editable metadata field
+│   │   └── FlatImageGallery.tsx  # Swipeable carousel with thumbnails
+│   └── platform/
+│       └── ConnectionCard.tsx    # Platform connection status card
 ├── theme/
-│   ├── colors.ts            # Color palette
+│   ├── colors.ts            # Color palette (slate/blue)
+│   ├── spacing.ts           # Spacing, border radius, shadows
+│   ├── typography.ts        # Font sizes, weights, line heights
 │   └── index.ts             # Theme exports
 ├── utils/
 │   ├── errors.ts            # Typed error classes
@@ -135,7 +139,7 @@ STORAGE_KEYS = {
 
 **Platform Connections & Shopify Integration (src/hooks/useConnections.ts)**
 - `useConnections()` hook fetches and caches platform connections
-- Exposes `connections`, `shopifyConnections`, `activeShopifyConnection`, `loading`, `error`, `refresh`
+- Exposes `connections`, `shopifyConnections`, `amazonConnections`, `activeShopifyConnection`, `activeAmazonConnection`, `loading`, `error`, `refresh`
 - Settings screen shows "Connected Platforms" section with status badges and disconnect option
 - Shopify OAuth flow: user enters store name → `getShopifyAuthUrl(shop)` returns JSON auth URL → opens in browser → backend handles callback → frontend refreshes connections
 - Results screen shows "Push to Shopify" button when an active Shopify connection exists
@@ -178,13 +182,25 @@ env = {
 }
 ```
 
-### Color Palette (src/theme/colors.ts)
-- Primary: `#007AFF` (blue)
+### Theme System (src/theme/)
+
+**Color Palette (colors.ts)** — Slate/blue design system
+- Primary: `#2563EB` (blue-600), primaryLight: `#3B82F6`, primaryDark: `#1D4ED8`, primaryBackground: `#EFF6FF`
 - Success: `#34C759`, successLight: `#E8F8EC`
 - Error: `#FF3B30`, errorLight: `#FFF5F5`
 - Warning: `#FF9500`, warningLight: `#FFF8E6`
-- Text: `#1a1a1a`, textSecondary: `#666666`, textTertiary: `#767676`
-- Overlay: overlayDark `rgba(0, 0, 0, 0.95)`
+- Neutral (slate scale): text `#1E293B`, textSecondary `#64748B`, textTertiary `#718096` (WCAG AA)
+- Border: `#E2E8F0`, borderDark: `#CBD5E1`
+- Backgrounds: `#FFFFFF`, secondary `#F8FAFC`, tertiary `#F1F5F9`
+- Accent (decorative): accentPurple `#C084FC`, accentAmber `#F59E0B`, accentCyan `#22D3EE`
+- Overlay: `rgba(0,0,0,0.5)`, overlayLight `rgba(0,0,0,0.1)`, overlayDark `rgba(0,0,0,0.95)`
+
+**Shadows (spacing.ts)** — Standardized elevation presets
+- `shadows.sm`: subtle (offset 0,1 opacity 0.05 radius 3, elevation 1)
+- `shadows.md`: standard card (offset 0,2 opacity 0.08 radius 8, elevation 2)
+- `shadows.lg`: elevated (offset 0,4 opacity 0.12 radius 16, elevation 4)
+
+**Typography (typography.ts)** — fontSize, fontWeight, lineHeight tokens
 
 ### Testing
 - Jest + React Native Testing Library

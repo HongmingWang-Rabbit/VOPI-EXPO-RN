@@ -198,6 +198,8 @@ export interface PushToListingRequest {
 export interface PushToListingResponse {
   listingId: string;
   status: string;
+  platformProductId?: string;
+  message?: string;
 }
 
 // User

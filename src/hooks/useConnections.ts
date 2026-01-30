@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { vopiService } from '../services/vopi.service';
 import { PlatformConnection } from '../types/vopi.types';
 
@@ -28,8 +28,11 @@ export function useConnections() {
     refresh();
   }, [refresh]);
 
-  const shopifyConnections = connections.filter((c) => c.platform === 'shopify');
-  const activeShopifyConnection = shopifyConnections.find((c) => c.status === 'active');
+  const shopifyConnections = useMemo(() => connections.filter((c) => c.platform === 'shopify'), [connections]);
+  const activeShopifyConnection = useMemo(() => shopifyConnections.find((c) => c.status === 'active'), [shopifyConnections]);
 
-  return { connections, shopifyConnections, activeShopifyConnection, loading, error, refresh };
+  const amazonConnections = useMemo(() => connections.filter((c) => c.platform === 'amazon'), [connections]);
+  const activeAmazonConnection = useMemo(() => amazonConnections.find((c) => c.status === 'active'), [amazonConnections]);
+
+  return { connections, shopifyConnections, activeShopifyConnection, amazonConnections, activeAmazonConnection, loading, error, refresh };
 }

@@ -12,6 +12,7 @@ import {
   CreditPack,
   CostEstimate,
   ProductMetadata,
+  PlatformInfo,
   PlatformConnection,
   ListingDetail,
   PushToListingRequest,
@@ -191,6 +192,18 @@ export const vopiService = {
       '/api/v1/oauth/shopify/authorize',
       { shop, response_type: 'json' }
     ).then((data) => data.authUrl),
+
+  getAmazonAuthUrl: () =>
+    apiClient.get<{ authUrl: string }>(
+      '/api/v1/oauth/amazon/authorize',
+      { response_type: 'json' }
+    ).then((data) => data.authUrl),
+
+  getAvailablePlatforms: () =>
+    apiClient.get<{ platforms: PlatformInfo[] }>('/api/v1/platforms/available'),
+
+  testConnection: (connectionId: string) =>
+    apiClient.post<{ status: string; message?: string }>(`/api/v1/connections/${connectionId}/test`),
 
   disconnectConnection: (connectionId: string) =>
     apiClient.delete<void>(`/api/v1/connections/${connectionId}`),

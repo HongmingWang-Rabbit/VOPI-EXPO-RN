@@ -1126,7 +1126,7 @@ export function LoginScreen() {
   if (isLoading) {
     return (
       <View style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
+        <ActivityIndicator size="large" color="#2563EB" />
         <Text style={styles.loadingText}>Signing in...</Text>
       </View>
     );
@@ -1279,7 +1279,7 @@ export function VideoPicker({ onSelect, disabled }: VideoPickerProps) {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2563EB',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 12,
@@ -1384,7 +1384,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2563EB',
     borderRadius: 4,
   },
   cancelButton: {

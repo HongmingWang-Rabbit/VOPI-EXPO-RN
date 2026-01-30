@@ -136,9 +136,16 @@ src/
 │   │   ├── UploadProgress.tsx    # Progress indicator
 │   │   ├── ErrorBoundary.tsx     # Error boundary
 │   │   └── WebContainer.tsx      # Web layout wrapper
-│   └── product/
-│       ├── EditableField.tsx     # Inline-editable metadata field
-│       └── FlatImageGallery.tsx  # Swipeable image carousel with thumbnails and fullscreen modal
+│   ├── product/
+│   │   ├── EditableField.tsx     # Inline-editable metadata field
+│   │   └── FlatImageGallery.tsx  # Swipeable image carousel with thumbnails and fullscreen modal
+│   └── platform/
+│       └── ConnectionCard.tsx    # Platform connection status card
+├── theme/
+│   ├── colors.ts            # Color palette (slate/blue design system, accent colors)
+│   ├── spacing.ts           # Spacing, border radius, shadow presets (sm/md/lg)
+│   ├── typography.ts        # Font sizes, weights, line heights
+│   └── index.ts             # Theme exports
 ├── utils/
 │   ├── errors.ts            # Typed error classes (APIError, NetworkError, TimeoutError)
 │   ├── storage.ts           # Cross-platform storage

@@ -312,6 +312,105 @@ describe('vopiService', () => {
     });
   });
 
+  describe('getConnections', () => {
+    it('calls apiClient.get with correct path', async () => {
+      const mockConnections = { connections: [{ id: 'conn-1', platform: 'shopify' }] };
+      mockApiClient.get.mockResolvedValue(mockConnections);
+
+      const result = await vopiService.getConnections();
+
+      expect(mockApiClient.get).toHaveBeenCalledWith('/api/v1/connections');
+      expect(result).toEqual(mockConnections);
+    });
+  });
+
+  describe('getShopifyAuthUrl', () => {
+    it('calls apiClient.get and returns authUrl string', async () => {
+      mockApiClient.get.mockResolvedValue({ authUrl: 'https://shopify.com/oauth' });
+
+      const result = await vopiService.getShopifyAuthUrl('mystore.myshopify.com');
+
+      expect(mockApiClient.get).toHaveBeenCalledWith(
+        '/api/v1/oauth/shopify/authorize',
+        { shop: 'mystore.myshopify.com', response_type: 'json' }
+      );
+      expect(result).toBe('https://shopify.com/oauth');
+    });
+  });
+
+  describe('getAmazonAuthUrl', () => {
+    it('calls apiClient.get and returns authUrl string', async () => {
+      mockApiClient.get.mockResolvedValue({ authUrl: 'https://sellercentral.amazon.com/oauth' });
+
+      const result = await vopiService.getAmazonAuthUrl();
+
+      expect(mockApiClient.get).toHaveBeenCalledWith(
+        '/api/v1/oauth/amazon/authorize',
+        { response_type: 'json' }
+      );
+      expect(result).toBe('https://sellercentral.amazon.com/oauth');
+    });
+  });
+
+  describe('getAvailablePlatforms', () => {
+    it('calls apiClient.get with correct path', async () => {
+      const mockPlatforms = { platforms: [{ platform: 'shopify', configured: true, name: 'Shopify' }] };
+      mockApiClient.get.mockResolvedValue(mockPlatforms);
+
+      const result = await vopiService.getAvailablePlatforms();
+
+      expect(mockApiClient.get).toHaveBeenCalledWith('/api/v1/platforms/available');
+      expect(result).toEqual(mockPlatforms);
+    });
+  });
+
+  describe('testConnection', () => {
+    it('calls apiClient.post with connection ID', async () => {
+      const mockResponse = { status: 'ok', message: 'Connection is healthy' };
+      mockApiClient.post.mockResolvedValue(mockResponse);
+
+      const result = await vopiService.testConnection('conn-123');
+
+      expect(mockApiClient.post).toHaveBeenCalledWith('/api/v1/connections/conn-123/test');
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('disconnectConnection', () => {
+    it('calls apiClient.delete with connection ID', async () => {
+      mockApiClient.delete.mockResolvedValue(undefined);
+
+      await vopiService.disconnectConnection('conn-123');
+
+      expect(mockApiClient.delete).toHaveBeenCalledWith('/api/v1/connections/conn-123');
+    });
+  });
+
+  describe('pushToListing', () => {
+    it('calls apiClient.post with request body', async () => {
+      const mockResponse = { listingId: 'listing-1', status: 'created' };
+      mockApiClient.post.mockResolvedValue(mockResponse);
+
+      const request = { jobId: 'job-123', connectionId: 'conn-1', options: { publishAsDraft: true } };
+      const result = await vopiService.pushToListing(request);
+
+      expect(mockApiClient.post).toHaveBeenCalledWith('/api/v1/listings/push', request);
+      expect(result).toEqual(mockResponse);
+    });
+  });
+
+  describe('getListing', () => {
+    it('calls apiClient.get with listing ID', async () => {
+      const mockListing = { id: 'listing-1', status: 'active' };
+      mockApiClient.get.mockResolvedValue(mockListing);
+
+      const result = await vopiService.getListing('listing-1');
+
+      expect(mockApiClient.get).toHaveBeenCalledWith('/api/v1/listings/listing-1');
+      expect(result).toEqual(mockListing);
+    });
+  });
+
   describe('updateProductMetadata', () => {
     it('calls apiClient.patch with job ID and updates', async () => {
       const mockMetadata = {

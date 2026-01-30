@@ -1354,7 +1354,7 @@ export function VideoPicker({ onSelect, disabled }: VideoPickerProps) {
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2563EB',
     paddingVertical: 16,
     paddingHorizontal: 32,
     borderRadius: 12,
@@ -1466,7 +1466,7 @@ const styles = StyleSheet.create({
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2563EB',
     borderRadius: 4,
   },
   cancelButton: {
@@ -1849,7 +1849,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   closeButton: {
-    color: '#007AFF',
+    color: '#2563EB',
     fontSize: 16,
     fontWeight: '500',
   },
