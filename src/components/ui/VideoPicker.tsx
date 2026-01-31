@@ -8,10 +8,12 @@ import { spacing, borderRadius, fontSize, fontWeight, shadows } from '../../them
 
 interface VideoPickerProps {
   onSelect: (video: { uri: string; fileName?: string; mimeType?: string }) => void;
+  onSelectMultiple?: (videos: Array<{ uri: string; fileName?: string; mimeType?: string }>) => void;
   disabled?: boolean;
+  allowMultiple?: boolean;
 }
 
-function VideoPickerComponent({ onSelect, disabled }: VideoPickerProps) {
+function VideoPickerComponent({ onSelect, onSelectMultiple, disabled, allowMultiple }: VideoPickerProps) {
   const { colors } = useTheme();
 
   const handlePress = useCallback(async () => {
@@ -31,20 +33,29 @@ function VideoPickerComponent({ onSelect, disabled }: VideoPickerProps) {
         mediaTypes: ['videos'],
         quality: 1,
         allowsEditing: false,
+        allowsMultipleSelection: allowMultiple ?? false,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        onSelect({
-          uri: asset.uri,
-          fileName: asset.fileName || 'video.mp4',
-          mimeType: asset.mimeType || 'video/mp4',
-        });
+      if (!result.canceled && result.assets.length > 0) {
+        if (allowMultiple && result.assets.length > 1 && onSelectMultiple) {
+          onSelectMultiple(result.assets.map((asset) => ({
+            uri: asset.uri,
+            fileName: asset.fileName || 'video.mp4',
+            mimeType: asset.mimeType || 'video/mp4',
+          })));
+        } else {
+          const asset = result.assets[0];
+          onSelect({
+            uri: asset.uri,
+            fileName: asset.fileName || 'video.mp4',
+            mimeType: asset.mimeType || 'video/mp4',
+          });
+        }
       }
     } catch {
       Alert.alert('Error', 'Failed to access video library. Please try again.');
     }
-  }, [onSelect]);
+  }, [onSelect, onSelectMultiple, allowMultiple]);
 
   return (
     <TouchableOpacity

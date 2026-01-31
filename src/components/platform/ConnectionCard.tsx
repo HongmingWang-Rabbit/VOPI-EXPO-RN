@@ -2,7 +2,8 @@ import React, { memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { PlatformConnection } from '../../types/vopi.types';
-import { colors, spacing, borderRadius, fontSize, fontWeight } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { spacing, borderRadius, fontSize, fontWeight } from '../../theme';
 
 interface ConnectionCardProps {
   connection: PlatformConnection;
@@ -36,33 +37,34 @@ function getDisplayInfo(connection: PlatformConnection): { platform: string; nam
 }
 
 export const ConnectionCard = memo(function ConnectionCard({ connection, onDisconnect }: ConnectionCardProps) {
+  const { colors } = useTheme();
   const { platform, name, extra } = getDisplayInfo(connection);
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { backgroundColor: colors.backgroundTertiary }]}>
       <View style={styles.info}>
-        <Text style={styles.platform}>{platform}</Text>
-        <Text style={styles.name}>{name}</Text>
+        <Text style={[styles.platform, { color: colors.textSecondary }]}>{platform}</Text>
+        <Text style={[styles.name, { color: colors.text }]}>{name}</Text>
         <View style={styles.meta}>
           <View
             style={[
               styles.statusBadge,
-              connection.status === 'active' ? styles.statusActive : styles.statusInactive,
+              { backgroundColor: connection.status === 'active' ? colors.successLight : colors.warningLight },
             ]}
           >
             <Text
               style={[
                 styles.statusText,
-                connection.status === 'active' ? styles.statusTextActive : styles.statusTextInactive,
+                { color: connection.status === 'active' ? colors.success : colors.warning },
               ]}
             >
               {connection.status}
             </Text>
           </View>
-          {extra && <Text style={styles.extra}>{extra}</Text>}
+          {extra && <Text style={[styles.extra, { color: colors.textSecondary }]}>{extra}</Text>}
         </View>
         {connection.lastError && (
-          <Text style={styles.error} numberOfLines={2}>
+          <Text style={[styles.error, { color: colors.error }]} numberOfLines={2}>
             {connection.lastError}
           </Text>
         )}
@@ -80,7 +82,6 @@ export const ConnectionCard = memo(function ConnectionCard({ connection, onDisco
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.backgroundTertiary,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     flexDirection: 'row',
@@ -93,14 +94,12 @@ const styles = StyleSheet.create({
   platform: {
     fontSize: fontSize.xs,
     fontWeight: fontWeight.medium,
-    color: colors.textSecondary,
     textTransform: 'uppercase',
     marginBottom: 2,
   },
   name: {
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
-    color: colors.text,
     marginBottom: 4,
   },
   meta: {
@@ -112,31 +111,17 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: borderRadius.sm,
   },
-  statusActive: {
-    backgroundColor: colors.successLight,
-  },
-  statusInactive: {
-    backgroundColor: colors.warningLight,
-  },
   statusText: {
     fontSize: fontSize.xs,
     fontWeight: fontWeight.medium,
     textTransform: 'capitalize',
   },
-  statusTextActive: {
-    color: colors.success,
-  },
-  statusTextInactive: {
-    color: colors.warning,
-  },
   extra: {
     fontSize: fontSize.xs,
-    color: colors.textSecondary,
     marginLeft: spacing.sm,
   },
   error: {
     fontSize: fontSize.xs,
-    color: colors.error,
     marginTop: 4,
   },
 });

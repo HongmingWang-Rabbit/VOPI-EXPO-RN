@@ -45,13 +45,14 @@ async function openOAuthFlow(
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { balance, packs, refresh } = useCredits();
-  const { shopifyConnections, amazonConnections, loading: connectionsLoading, refresh: refreshConnections } = useConnections();
+  const { shopifyConnections, amazonConnections, ebayConnections, loading: connectionsLoading, refresh: refreshConnections } = useConnections();
   const { colors, themeMode, setThemeMode } = useTheme();
   const isCheckoutInProgressRef = useRef(false);
   const [showShopSheet, setShowShopSheet] = useState(false);
   const [shopDomain, setShopDomain] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [connectingAmazon, setConnectingAmazon] = useState(false);
+  const [connectingEbay, setConnectingEbay] = useState(false);
 
   // Refresh credits when app returns to foreground after checkout
   const handleAppStateChange = useCallback((nextAppState: string) => {
@@ -64,6 +65,7 @@ export default function SettingsScreen() {
 
   const handlePurchaseCredits = async (packType: string) => {
     haptics.light();
+    let subscription: ReturnType<typeof AppState.addEventListener> | null = null;
     try {
       const checkoutUrls = getCheckoutUrls();
       const { checkoutUrl } = await vopiService.createCheckout(
@@ -76,23 +78,29 @@ export default function SettingsScreen() {
       isCheckoutInProgressRef.current = true;
 
       // Listen for app state changes
-      const subscription = AppState.addEventListener('change', handleAppStateChange);
+      subscription = AppState.addEventListener('change', handleAppStateChange);
 
       await WebBrowser.openBrowserAsync(checkoutUrl);
 
-      // Clean up listener and refresh credits
-      subscription.remove();
+      // Refresh credits after returning from checkout
       isCheckoutInProgressRef.current = false;
       refresh();
-    } catch {
+    } catch (err) {
       isCheckoutInProgressRef.current = false;
+      if (__DEV__) console.error('[Settings] Checkout failed:', err);
       Alert.alert('Error', 'Failed to start checkout. Please try again.');
+    } finally {
+      subscription?.remove();
     }
   };
 
   const handleConnectShopify = async () => {
     const storeName = shopDomain.trim().toLowerCase().replace(/\.myshopify\.com$/, '');
     if (!storeName) return;
+    if (storeName.length < 2 || !/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(storeName)) {
+      Alert.alert('Invalid Store Name', 'Store name must contain only letters, numbers, and hyphens.');
+      return;
+    }
     const shop = `${storeName}.myshopify.com`;
     try {
       setConnecting(true);
@@ -107,18 +115,24 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleConnectAmazon = async () => {
+  const handleConnectPlatform = async (
+    getAuthUrl: () => Promise<string>,
+    setConnecting: (v: boolean) => void,
+  ) => {
     haptics.light();
     try {
-      setConnectingAmazon(true);
-      await openOAuthFlow(() => vopiService.getAmazonAuthUrl(), refreshConnections);
+      setConnecting(true);
+      await openOAuthFlow(getAuthUrl, refreshConnections);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       Alert.alert('Connection Failed', message);
     } finally {
-      setConnectingAmazon(false);
+      setConnecting(false);
     }
   };
+
+  const handleConnectAmazon = () => handleConnectPlatform(() => vopiService.getAmazonAuthUrl(), setConnectingAmazon);
+  const handleConnectEbay = () => handleConnectPlatform(() => vopiService.getEbayAuthUrl(), setConnectingEbay);
 
   const handleDisconnect = useCallback((connection: PlatformConnection) => {
     haptics.light();
@@ -282,6 +296,27 @@ export default function SettingsScreen() {
                   <>
                     <Ionicons name="logo-amazon" size={20} color={colors.primary} />
                     <Text style={[styles.connectButtonText, { color: colors.primary }]}>Connect Amazon</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* eBay Connections */}
+              {ebayConnections.map((conn) => (
+                <ConnectionCard key={conn.id} connection={conn} onDisconnect={handleDisconnect} />
+              ))}
+              <TouchableOpacity
+                style={[styles.connectButton, styles.connectButtonSpaced, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={handleConnectEbay}
+                disabled={connectingEbay}
+                accessibilityRole="button"
+                accessibilityLabel="Connect eBay seller account"
+              >
+                {connectingEbay ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <>
+                    <Ionicons name="pricetag-outline" size={20} color={colors.primary} />
+                    <Text style={[styles.connectButtonText, { color: colors.primary }]}>Connect eBay</Text>
                   </>
                 )}
               </TouchableOpacity>

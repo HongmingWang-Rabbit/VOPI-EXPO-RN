@@ -17,9 +17,10 @@ import { STORAGE_KEYS } from '../constants/storage';
 
 // Keys that should use sessionStorage (temporary, cleared on tab close)
 // Only OAuth flow state - NOT tokens (tokens need to persist)
-const SESSION_STORAGE_KEYS = new Set([
-  'oauth_state',
-  'oauth_code_verifier',
+const SESSION_STORAGE_KEYS: Set<string> = new Set([
+  STORAGE_KEYS.OAUTH_STATE,
+  STORAGE_KEYS.OAUTH_CODE_VERIFIER,
+  STORAGE_KEYS.OAUTH_PROVIDER,
 ]);
 
 export const storage = {

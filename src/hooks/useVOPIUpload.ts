@@ -3,6 +3,7 @@ import { vopiService } from '../services/vopi.service';
 import { VOPIConfig } from '../config/vopi.config';
 import { UploadState } from '../types/vopi.types';
 import { capitalizeFirst } from '../utils/strings';
+import { notifyProcessingComplete, notifyProcessingFailed } from '../services/notifications';
 
 // UI strings for internationalization
 const UI_STRINGS = {
@@ -96,7 +97,6 @@ export function useVOPIUpload() {
         // Step 4: Poll for completion
         let attempts = 0;
         let consecutiveErrors = 0;
-        const MAX_CONSECUTIVE_ERRORS = 5;
 
         const pollStatus = async () => {
           if (isCancelledRef.current || !isMountedRef.current) {
@@ -125,9 +125,11 @@ export function useVOPIUpload() {
             if (status.status === 'completed') {
               cleanup();
               await handleJobComplete(job.id);
+              notifyProcessingComplete(job.id).catch(() => {});
             } else if (status.status === 'failed' || status.status === 'cancelled') {
               cleanup();
               safeSetState({ status: 'error', message: `Job ${status.status}` });
+              notifyProcessingFailed(job.id).catch(() => {});
             }
           } catch (error) {
             consecutiveErrors++;
@@ -137,7 +139,7 @@ export function useVOPIUpload() {
             }
 
             // Stop polling after too many consecutive errors
-            if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            if (consecutiveErrors >= VOPIConfig.maxConsecutivePollingErrors) {
               cleanup();
               safeSetState({
                 status: 'error',

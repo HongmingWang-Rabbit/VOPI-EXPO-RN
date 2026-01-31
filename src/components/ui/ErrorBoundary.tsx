@@ -1,6 +1,10 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { colors, spacing, fontSize, fontWeight, borderRadius } from '../../theme';
+import { spacing, fontSize, fontWeight, borderRadius } from '../../theme';
+// Static colors import: class components cannot use useTheme() hook.
+// Error boundary always renders in light theme as a safe fallback.
+import { colors } from '../../theme/colors';
+import { captureError } from '../../services/sentry';
 
 interface Props {
   children: ReactNode;
@@ -27,13 +31,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Always log errors to help with debugging
-    console.error('[ErrorBoundary] Caught error:', error.message);
-    console.error('[ErrorBoundary] Stack:', error.stack);
-    console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
+    if (__DEV__) {
+      console.error('[ErrorBoundary] Caught error:', error.message);
+      console.error('[ErrorBoundary] Stack:', error.stack);
+      console.error('[ErrorBoundary] Component stack:', errorInfo.componentStack);
+    }
 
-    // In production, you would send this to an error tracking service
-    // Example: Sentry.captureException(error, { extra: errorInfo });
+    captureError(error, { componentStack: errorInfo.componentStack ?? undefined });
   }
 
   handleRetry = () => {

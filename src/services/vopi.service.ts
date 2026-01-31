@@ -199,6 +199,12 @@ export const vopiService = {
       { response_type: 'json' }
     ).then((data) => data.authUrl),
 
+  getEbayAuthUrl: () =>
+    apiClient.get<{ authUrl: string }>(
+      '/api/v1/oauth/ebay/authorize',
+      { response_type: 'json' }
+    ).then((data) => data.authUrl),
+
   getAvailablePlatforms: () =>
     apiClient.get<{ platforms: PlatformInfo[] }>('/api/v1/platforms/available'),
 

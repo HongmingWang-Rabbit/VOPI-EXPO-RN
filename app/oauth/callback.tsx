@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Platform } from 'react-native';
 import { VOPIConfig } from '../../src/config/vopi.config';
-import { colors, spacing, fontSize, fontWeight } from '../../src/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import { spacing, fontSize, fontWeight } from '../../src/theme';
 import {
   validateOAuthState,
   exchangeOAuthCode,
@@ -18,6 +19,7 @@ import {
 export default function OAuthCallbackScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+  const { colors } = useTheme();
   const [error, setError] = useState<string | null>(null);
 
   const handleOAuthCallback = useCallback(async () => {
@@ -76,11 +78,11 @@ export default function OAuthCallbackScreen() {
 
   if (error) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorTitle}>Authentication Failed</Text>
-        <Text style={styles.errorMessage}>{error}</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.errorTitle, { color: colors.error }]}>Authentication Failed</Text>
+        <Text style={[styles.errorMessage, { color: colors.textSecondary }]}>{error}</Text>
         <Text
-          style={styles.link}
+          style={[styles.link, { color: colors.primary }]}
           onPress={() => router.replace('/(auth)/login')}
           accessibilityRole="link"
         >
@@ -91,9 +93,9 @@ export default function OAuthCallbackScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ActivityIndicator size="large" color={colors.primary} />
-      <Text style={styles.text}>Completing sign in...</Text>
+      <Text style={[styles.text, { color: colors.textSecondary }]}>Completing sign in...</Text>
     </View>
   );
 }
@@ -103,29 +105,24 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.white,
     padding: spacing.xl,
   },
   text: {
     marginTop: spacing.lg,
     fontSize: fontSize.md,
-    color: colors.textSecondary,
   },
   errorTitle: {
     fontSize: fontSize.xl,
     fontWeight: fontWeight.semibold,
-    color: colors.error,
     marginBottom: spacing.sm,
   },
   errorMessage: {
     fontSize: fontSize.md,
-    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: spacing.xl,
   },
   link: {
     fontSize: fontSize.md,
-    color: colors.primary,
     textDecorationLine: 'underline',
   },
 });

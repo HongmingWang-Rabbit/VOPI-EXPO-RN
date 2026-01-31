@@ -21,6 +21,9 @@ export const VOPIConfig = {
   pollingInterval: env.pollingInterval,
   maxPollingAttempts: env.maxPollingAttempts,
 
+  // Error thresholds
+  maxConsecutivePollingErrors: 5,
+
   // Recording
   maxRecordingDuration: env.maxRecordingDuration,
 } as const;

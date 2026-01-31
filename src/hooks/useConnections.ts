@@ -34,5 +34,8 @@ export function useConnections() {
   const amazonConnections = useMemo(() => connections.filter((c) => c.platform === 'amazon'), [connections]);
   const activeAmazonConnection = useMemo(() => amazonConnections.find((c) => c.status === 'active'), [amazonConnections]);
 
-  return { connections, shopifyConnections, activeShopifyConnection, amazonConnections, activeAmazonConnection, loading, error, refresh };
+  const ebayConnections = useMemo(() => connections.filter((c) => c.platform === 'ebay'), [connections]);
+  const activeEbayConnection = useMemo(() => ebayConnections.find((c) => c.status === 'active'), [ebayConnections]);
+
+  return { connections, shopifyConnections, activeShopifyConnection, amazonConnections, activeAmazonConnection, ebayConnections, activeEbayConnection, loading, error, refresh };
 }

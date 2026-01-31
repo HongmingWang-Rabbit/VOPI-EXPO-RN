@@ -59,6 +59,17 @@ export function toCacheKey(url: string): string {
 }
 
 /**
+ * Generate a unique ID, using crypto.randomUUID when available
+ * with a fallback for environments that don't support it.
+ */
+export function generateId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
  * Safely format a date string, returning a fallback if invalid
  */
 export function formatDate(dateString: string): string {

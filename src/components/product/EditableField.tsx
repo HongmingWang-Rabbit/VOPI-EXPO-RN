@@ -72,7 +72,7 @@ function EditableFieldComponent({ label, value, onSave, multiline, isArray, isNu
           setSaving(false);
           return;
         }
-        parsed = trimmed === '' ? 0 : num;
+        parsed = trimmed === '' ? '' : num;
       } else {
         parsed = trimmed;
       }

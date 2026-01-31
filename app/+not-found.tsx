@@ -1,15 +1,19 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Link, Stack } from 'expo-router';
+import { useTheme } from '../src/contexts/ThemeContext';
+import { spacing, borderRadius, fontSize, fontWeight } from '../src/theme';
 
 export default function NotFoundScreen() {
+  const { colors } = useTheme();
+
   return (
     <>
       <Stack.Screen options={{ title: 'Oops!' }} />
-      <View style={styles.container}>
-        <Text style={styles.title}>Page Not Found</Text>
-        <Text style={styles.text}>This screen doesn't exist.</Text>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Text style={[styles.title, { color: colors.text }]}>Page Not Found</Text>
+        <Text style={[styles.text, { color: colors.textSecondary }]}>This screen doesn't exist.</Text>
         <Link href="/" asChild>
-          <TouchableOpacity style={styles.button}>
+          <TouchableOpacity style={[styles.button, { backgroundColor: colors.primary }]}>
             <Text style={styles.buttonText}>Go to Home</Text>
           </TouchableOpacity>
         </Link>
@@ -23,28 +27,25 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
+    padding: spacing.xl,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
+    fontSize: fontSize.xxl,
+    fontWeight: fontWeight.bold,
+    marginBottom: spacing.sm,
   },
   text: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 24,
+    fontSize: fontSize.md,
+    marginBottom: spacing.xl,
   },
   button: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
   },
   buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    color: '#FFFFFF',
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
   },
 });

@@ -102,8 +102,8 @@ function FlatImageGalleryComponent({ commercialImages, jobId, onDeleteImage }: F
             await onDeleteImage(frameId, version);
             setDeletedUrls((prev) => new Set(prev).add(url));
             setSelectedEntry(null);
-            // Adjust activeIndex if needed
-            setActiveIndex((prev) => Math.min(prev, Math.max(0, imageEntries.length - 2)));
+            // Adjust activeIndex using functional updater to avoid stale closure
+            setActiveIndex((prev) => Math.max(0, prev >= imageEntries.length - 1 ? prev - 1 : prev));
           } catch (err) {
             Alert.alert('Delete Failed', err instanceof Error ? err.message : 'Unknown error');
           } finally {

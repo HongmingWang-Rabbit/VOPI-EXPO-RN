@@ -11,6 +11,7 @@ import {
   LayoutAnimation,
   UIManager,
   Platform,
+  TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,9 +31,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const JOBS_LIMIT = 50;
-const POLL_INTERVAL = VOPIConfig.pollingInterval + 2000;
+const JOBS_LIMIT = 20;
+/** Poll at half the frequency of the upload hook to reduce API load on the list screen */
+const LIST_POLL_MULTIPLIER = 2;
+const POLL_INTERVAL = VOPIConfig.pollingInterval * LIST_POLL_MULTIPLIER;
+/** Max parallel metadata+thumbnail fetches to avoid overwhelming the API */
 const ENRICH_CONCURRENCY = 5;
+/** Evict oldest enriched entries when cache exceeds this size to bound memory */
 const MAX_ENRICHED_CACHE = 200;
 
 const PROCESSING_STATUSES = [
@@ -44,6 +49,13 @@ const PROCESSING_STATUSES = [
   'extracting_product',
   'generating',
 ];
+
+const STATUS_FILTERS = [
+  { key: null, label: 'All' },
+  { key: 'processing', label: 'Processing' },
+  { key: 'completed', label: 'Completed' },
+  { key: 'failed', label: 'Failed' },
+] as const;
 
 interface EnrichedData {
   thumbnail?: string;
@@ -101,20 +113,38 @@ export default function ProductsScreen() {
   const [jobStatuses, setJobStatuses] = useState<Record<string, JobStatus>>({});
   const [enriched, setEnriched] = useState<Record<string, EnrichedData>>({});
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMountedRef = useRef(true);
   const enrichedIdsRef = useRef<Set<string>>(new Set());
   const swipeableRefs = useRef<Map<string, Swipeable>>(new Map());
+  const totalFetchedRef = useRef(0);
 
-  const fetchJobs = useCallback(async () => {
+  const fetchJobs = useCallback(async (offset = 0, append = false) => {
     try {
       setError(null);
-      const result = await vopiService.listJobs({ limit: JOBS_LIMIT });
+      const result = await vopiService.listJobs({ limit: JOBS_LIMIT, offset });
       if (isMountedRef.current) {
-        setJobs(result.jobs);
+        if (append) {
+          setJobs((prev) => {
+            const updated = [...prev, ...result.jobs];
+            totalFetchedRef.current = updated.length;
+            return updated;
+          });
+        } else {
+          setJobs(result.jobs);
+          totalFetchedRef.current = result.jobs.length;
+        }
+        setHasMore(result.jobs.length >= JOBS_LIMIT);
       }
     } catch (err) {
       if (isMountedRef.current) {
@@ -124,9 +154,16 @@ export default function ProductsScreen() {
       if (isMountedRef.current) {
         setLoading(false);
         setRefreshing(false);
+        setLoadingMore(false);
       }
     }
   }, []);
+
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore || loading) return;
+    setLoadingMore(true);
+    fetchJobs(totalFetchedRef.current, true);
+  }, [fetchJobs, loadingMore, hasMore, loading]);
 
   // Lazy-enrich completed jobs with thumbnail + title (batched, cancellable)
   useEffect(() => {
@@ -135,6 +172,9 @@ export default function ProductsScreen() {
     );
     if (completedJobs.length === 0) return;
 
+    // Track in-flight IDs to prevent duplicate requests, but don't commit
+    // to enrichedIdsRef until enrichment succeeds so failed jobs can be retried.
+    const inFlightIds = new Set(completedJobs.map((j) => j.id));
     completedJobs.forEach((job) => enrichedIdsRef.current.add(job.id));
 
     const controller = new AbortController();
@@ -144,7 +184,6 @@ export default function ProductsScreen() {
         if (!controller.signal.aborted && isMountedRef.current && Object.keys(updates).length > 0) {
           setEnriched((prev) => {
             const merged = { ...prev, ...updates };
-            // Evict oldest entries if cache exceeds limit
             const keys = Object.keys(merged);
             if (keys.length > MAX_ENRICHED_CACHE) {
               const toRemove = keys.slice(0, keys.length - MAX_ENRICHED_CACHE);
@@ -152,12 +191,18 @@ export default function ProductsScreen() {
             }
             return merged;
           });
+          // Remove IDs that weren't enriched so they can be retried
+          inFlightIds.forEach((id) => {
+            if (!(id in updates)) enrichedIdsRef.current.delete(id);
+          });
         }
       })
       .catch((err) => {
         if (__DEV__) {
           console.warn('[Products] Enrichment failed:', err);
         }
+        // Allow retry on next render for all failed jobs
+        inFlightIds.forEach((id) => enrichedIdsRef.current.delete(id));
       });
 
     return () => {
@@ -188,7 +233,7 @@ export default function ProductsScreen() {
         });
 
         setJobStatuses((prev) => ({ ...prev, ...newStatuses }));
-        if (hasStatusChange) fetchJobs();
+        if (hasStatusChange) fetchJobs(0, false);
       }
     } catch {
       // ignore polling errors
@@ -197,7 +242,7 @@ export default function ProductsScreen() {
 
   useEffect(() => {
     isMountedRef.current = true;
-    fetchJobs();
+    fetchJobs(0, false);
     return () => {
       isMountedRef.current = false;
     };
@@ -219,9 +264,10 @@ export default function ProductsScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
+    setHasMore(true);
     enrichedIdsRef.current.clear();
     setEnriched({});
-    fetchJobs();
+    fetchJobs(0, false);
   };
 
   const getStatusColor = (status: string) => {
@@ -265,6 +311,58 @@ export default function ProductsScreen() {
     []
   );
 
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    haptics.light();
+    Alert.alert(
+      'Delete Selected',
+      `Are you sure you want to delete ${selectedIds.size} product${selectedIds.size > 1 ? 's' : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBulkDeleting(true);
+            const ids = Array.from(selectedIds);
+            const results = await Promise.allSettled(ids.map((id) => vopiService.deleteJob(id)));
+            const failedCount = results.filter((r) => r.status === 'rejected').length;
+            const succeededIds = new Set(
+              ids.filter((_, i) => results[i].status === 'fulfilled')
+            );
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setJobs((prev) => prev.filter((j) => !succeededIds.has(j.id)));
+            succeededIds.forEach((id) => enrichedIdsRef.current.delete(id));
+            setEnriched((prev) => {
+              const next = { ...prev };
+              succeededIds.forEach((id) => delete next[id]);
+              return next;
+            });
+            exitSelectMode();
+            setBulkDeleting(false);
+            if (failedCount > 0) {
+              Alert.alert('Partial Failure', `${failedCount} product${failedCount > 1 ? 's' : ''} could not be deleted.`);
+            }
+          },
+        },
+      ]
+    );
+  }, [selectedIds, exitSelectMode]);
+
   const handleDelete = useCallback(
     (job: Job) => {
       const title = enriched[job.id]?.title || `Job #${job.id.slice(0, 8)}`;
@@ -280,6 +378,26 @@ export default function ProductsScreen() {
     },
     [enriched, performDelete]
   );
+
+  const filteredJobs = React.useMemo(() => {
+    let result = jobs;
+    if (statusFilter) {
+      if (statusFilter === 'processing') {
+        result = result.filter((j) => PROCESSING_STATUSES.includes(j.status));
+      } else {
+        result = result.filter((j) => j.status === statusFilter);
+      }
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((j) => {
+        const title = enriched[j.id]?.title?.toLowerCase() || '';
+        const id = j.id.toLowerCase();
+        return title.includes(q) || id.includes(q);
+      });
+    }
+    return result;
+  }, [jobs, enriched, statusFilter, searchQuery]);
 
   const renderRightActions = useCallback(
     (job: Job) => (
@@ -311,16 +429,29 @@ export default function ProductsScreen() {
     const progressPercent = detailedStatus?.progress?.percentage ?? 0;
     const progressStep = detailedStatus?.progress?.step || detailedStatus?.progress?.message;
 
+    const isSelected = selectedIds.has(item.id);
+
     const cardContent = (
       <TouchableOpacity
-        style={[styles.card, { backgroundColor: colors.background }, isDeleting && styles.cardDeleting]}
+        style={[styles.card, { backgroundColor: colors.background }, isDeleting && styles.cardDeleting, isSelected && { borderColor: colors.primary, borderWidth: 2 }]}
         onPress={() => {
+          if (selectMode) {
+            toggleSelect(item.id);
+            return;
+          }
           if (isCompleted && !isDeleting) {
             haptics.light();
             router.push({ pathname: '/results', params: { jobId: item.id } });
           }
         }}
-        disabled={!isCompleted || isDeleting}
+        onLongPress={() => {
+          if (!selectMode) {
+            haptics.medium();
+            setSelectMode(true);
+            toggleSelect(item.id);
+          }
+        }}
+        disabled={isDeleting}
         activeOpacity={0.7}
         accessibilityRole="button"
         accessibilityLabel={`${cardTitle}, ${dateStr}, ${item.status}`}
@@ -329,6 +460,17 @@ export default function ProductsScreen() {
         {isDeleting && (
           <View style={[styles.deletingOverlay, { backgroundColor: colors.overlayLight }]}>
             <ActivityIndicator size="large" color={colors.error} />
+          </View>
+        )}
+
+        {/* Select checkbox */}
+        {selectMode && (
+          <View style={styles.checkboxContainer}>
+            <Ionicons
+              name={isSelected ? 'checkbox' : 'square-outline'}
+              size={24}
+              color={isSelected ? colors.primary : colors.borderDark}
+            />
           </View>
         )}
 
@@ -376,7 +518,7 @@ export default function ProductsScreen() {
           )}
         </View>
 
-        {!isDeleting && (
+        {!isDeleting && !selectMode && (
           <TouchableOpacity
             onPress={() => handleDelete(item)}
             style={styles.deleteBtn}
@@ -421,7 +563,7 @@ export default function ProductsScreen() {
       <Ionicons name="alert-circle-outline" size={64} color={colors.error} />
       <Text style={[styles.emptyTitle, { color: colors.text }]}>Failed to Load</Text>
       <Text style={[styles.emptyText, { color: colors.textSecondary }]}>{error}</Text>
-      <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={fetchJobs}>
+      <TouchableOpacity style={[styles.retryButton, { backgroundColor: colors.primary }]} onPress={() => fetchJobs(0, false)}>
         <Text style={styles.retryButtonText}>Retry</Text>
       </TouchableOpacity>
     </View>
@@ -439,17 +581,81 @@ export default function ProductsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.backgroundSecondary }]}>
       <View style={[styles.header, { backgroundColor: colors.background }]}>
-        <Text style={[styles.headerTitle, { color: colors.text }]} accessibilityRole="header">Products</Text>
+        {selectMode ? (
+          <View style={styles.selectHeader}>
+            <TouchableOpacity onPress={exitSelectMode}>
+              <Text style={[styles.selectHeaderAction, { color: colors.primary }]}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>
+              {selectedIds.size} selected
+            </Text>
+            <TouchableOpacity onPress={handleBulkDelete} disabled={selectedIds.size === 0 || bulkDeleting}>
+              <Text style={[styles.selectHeaderAction, { color: selectedIds.size > 0 ? colors.error : colors.textTertiary }]}>
+                {bulkDeleting ? 'Deleting...' : 'Delete'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.selectHeader}>
+            <Text style={[styles.headerTitle, { color: colors.text }]} accessibilityRole="header">Products</Text>
+            {jobs.length > 0 && (
+              <TouchableOpacity onPress={() => setSelectMode(true)}>
+                <Text style={[styles.selectHeaderAction, { color: colors.primary }]}>Select</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
+
+      {/* Search Bar */}
+      <View style={[styles.searchContainer, { backgroundColor: colors.background }]}>
+        <View style={[styles.searchBar, { backgroundColor: colors.backgroundTertiary, borderColor: colors.border }]}>
+          <Ionicons name="search" size={18} color={colors.textTertiary} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search products..."
+            placeholderTextColor={colors.textTertiary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="Clear search">
+              <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={styles.filterRow}>
+          {STATUS_FILTERS.map((f) => (
+            <TouchableOpacity
+              key={f.label}
+              style={[
+                styles.filterChip,
+                { borderColor: statusFilter === f.key ? colors.primary : colors.border,
+                  backgroundColor: statusFilter === f.key ? colors.primaryBackground : colors.background },
+              ]}
+              onPress={() => setStatusFilter(statusFilter === f.key ? null : f.key)}
+            >
+              <Text style={[styles.filterChipText, { color: statusFilter === f.key ? colors.primary : colors.textSecondary }]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <FlatList
-        data={jobs}
+        data={filteredJobs}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        extraData={deletingIds}
+        extraData={{ deletingIds, selectedIds, selectMode }}
         contentContainerStyle={styles.listContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         ListEmptyComponent={loading ? renderLoading() : error ? renderError() : renderEmpty()}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={colors.primary} style={styles.loadMoreIndicator} /> : null}
       />
     </SafeAreaView>
   );
@@ -463,9 +669,54 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     ...shadows.sm,
   },
+  selectHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  selectHeaderAction: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+  },
   headerTitle: {
     fontSize: fontSize.xxl,
     fontWeight: fontWeight.bold,
+  },
+  checkboxContainer: {
+    marginRight: spacing.sm,
+  },
+  searchContainer: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: fontSize.md,
+    paddingVertical: 4,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+  },
+  filterChipText: {
+    fontSize: fontSize.xs,
+    fontWeight: fontWeight.medium,
   },
   listContent: {
     padding: spacing.lg,
@@ -600,5 +851,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: fontSize.md,
     fontWeight: fontWeight.semibold,
+  },
+  loadMoreIndicator: {
+    paddingVertical: spacing.lg,
   },
 });

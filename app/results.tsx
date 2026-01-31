@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Switch } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert, Switch, Modal, TextInput, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -12,9 +12,52 @@ import { haptics } from '../src/utils/haptics';
 import { FlatImageGallery } from '../src/components/product/FlatImageGallery';
 import { EditableField } from '../src/components/product/EditableField';
 import { SkeletonResultsPage } from '../src/components/ui/SkeletonResultsPage';
+import { useTemplates } from '../src/hooks/useTemplates';
+import { MetadataTemplate } from '../src/services/templates';
 import { spacing, borderRadius, fontSize, fontWeight, shadows } from '../src/theme';
 
 const BACK_ICON_SIZE = 24;
+
+function PlatformPushButton({
+  platform,
+  label,
+  pushing,
+  disabled,
+  onPress,
+}: {
+  platform: string;
+  label: string;
+  pushing: boolean;
+  disabled: boolean;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      style={[styles.pushButton, { backgroundColor: colors.primary }, pushing && styles.pushButtonDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={`Push product to ${label}`}
+    >
+      <View style={styles.pushButtonContent}>
+        {pushing ? (
+          <Text style={styles.pushButtonText}>Pushing...</Text>
+        ) : (
+          <>
+            <Ionicons name="cloud-upload-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.pushButtonText}>Push to {label}</Text>
+          </>
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+/** Fields that are per-product and should NOT be saved into reusable templates */
+const PER_PRODUCT_FIELDS: ReadonlySet<keyof ProductMetadata['product']> = new Set([
+  'confidence', 'title', 'description', 'shortDescription', 'bulletPoints',
+] as const);
 
 export default function ResultsScreen() {
   const router = useRouter();
@@ -26,9 +69,14 @@ export default function ResultsScreen() {
   const [job, setJob] = useState<Job | null>(null);
   const [downloadUrls, setDownloadUrls] = useState<DownloadUrlsResponse | null>(null);
   const [metadata, setMetadata] = useState<ProductMetadata | null>(null);
+  const [partialError, setPartialError] = useState<string | null>(null);
   const [publishAsDraft, setPublishAsDraft] = useState(true);
   const [pushingPlatform, setPushingPlatform] = useState<string | null>(null);
-  const { activeShopifyConnection, activeAmazonConnection, loading: connectionsLoading } = useConnections();
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
+  const [showApplyTemplate, setShowApplyTemplate] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const { templates, saveTemplate, deleteTemplate } = useTemplates();
+  const { activeShopifyConnection, activeAmazonConnection, activeEbayConnection, loading: connectionsLoading } = useConnections();
 
   const fetchResults = useCallback(async () => {
     if (!jobId) return;
@@ -55,6 +103,11 @@ export default function ResultsScreen() {
         if (urlsResult.status === 'rejected') console.warn('[Results] Failed to fetch URLs:', urlsResult.reason);
         if (metaResult.status === 'rejected') console.warn('[Results] Failed to fetch metadata:', metaResult.reason);
       }
+
+      const failedParts: string[] = [];
+      if (urlsResult.status === 'rejected') failedParts.push('images');
+      if (metaResult.status === 'rejected') failedParts.push('metadata');
+      setPartialError(failedParts.length > 0 ? `Failed to load ${failedParts.join(' and ')}` : null);
 
       setJob(jobData);
       setDownloadUrls(urlsData);
@@ -98,7 +151,7 @@ export default function ResultsScreen() {
     haptics.light();
     try {
       setPushingPlatform(connection.platform);
-      const { confidence: _, ...productFields } = metadata?.product ?? {} as ProductMetadata['product'];
+      const { confidence: _, ...productFields } = metadata?.product ?? ({} as Partial<ProductMetadata['product']>);
       const response = await vopiService.pushToListing({
         jobId,
         connectionId: connection.id,
@@ -117,6 +170,34 @@ export default function ResultsScreen() {
       setPushingPlatform(null);
     }
   }, [jobId, metadata, showToast]);
+
+  const handleSaveTemplate = useCallback(async () => {
+    if (!templateName.trim() || !metadata?.product) return;
+    try {
+      const reusableFields = Object.fromEntries(
+        Object.entries(metadata.product).filter(([key]) => !PER_PRODUCT_FIELDS.has(key as keyof ProductMetadata['product']))
+      );
+      await saveTemplate(templateName.trim(), reusableFields as MetadataTemplate['fields']);
+      setTemplateName('');
+      setShowSaveTemplate(false);
+      showToast('Template saved', 'success');
+    } catch {
+      showToast('Failed to save template', 'error');
+    }
+  }, [templateName, metadata, saveTemplate, showToast]);
+
+  const handleApplyTemplate = useCallback(async (template: MetadataTemplate) => {
+    if (!jobId) return;
+    try {
+      const updated = await vopiService.updateProductMetadata(jobId, template.fields);
+      setMetadata(updated);
+      setShowApplyTemplate(false);
+      haptics.success();
+      showToast(`Applied "${template.name}"`, 'success');
+    } catch (err) {
+      showToast('Failed to apply template', 'error');
+    }
+  }, [jobId, showToast]);
 
   const product = metadata?.product;
   const title = product?.title || `Job #${jobId?.slice(0, 8)}`;
@@ -169,6 +250,19 @@ export default function ResultsScreen() {
       </View>
 
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Partial load warning — tap to retry */}
+        {partialError && (
+          <TouchableOpacity
+            style={[styles.partialErrorBanner, { backgroundColor: colors.warningLight }]}
+            onPress={fetchResults}
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading failed data"
+          >
+            <Ionicons name="warning-outline" size={16} color={colors.warning} />
+            <Text style={[styles.partialErrorText, { color: colors.warning }]}>{partialError}. Tap to retry.</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Image Gallery */}
         {downloadUrls?.commercialImages &&
         Object.keys(downloadUrls.commercialImages).length > 0 ? (
@@ -225,6 +319,31 @@ export default function ResultsScreen() {
           </View>
         )}
 
+        {/* Templates */}
+        {product && (
+          <View style={styles.templateSection}>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Templates</Text>
+            <View style={styles.templateButtons}>
+              <TouchableOpacity
+                style={[styles.templateBtn, { borderColor: colors.border }]}
+                onPress={() => setShowSaveTemplate(true)}
+              >
+                <Ionicons name="save-outline" size={18} color={colors.primary} />
+                <Text style={[styles.templateBtnText, { color: colors.primary }]}>Save as Template</Text>
+              </TouchableOpacity>
+              {templates.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.templateBtn, { borderColor: colors.border }]}
+                  onPress={() => setShowApplyTemplate(true)}
+                >
+                  <Ionicons name="clipboard-outline" size={18} color={colors.primary} />
+                  <Text style={[styles.templateBtnText, { color: colors.primary }]}>Apply Template</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
         {/* Push to Platforms */}
         {job?.status === 'completed' && !connectionsLoading && (
           <View style={styles.shopifySection}>
@@ -241,51 +360,44 @@ export default function ResultsScreen() {
                     trackColor={{ false: colors.border, true: colors.primary }}
                   />
                 </View>
-                <TouchableOpacity
-                  style={[styles.pushButton, { backgroundColor: colors.primary }, pushingPlatform === 'shopify' && styles.pushButtonDisabled]}
-                  onPress={() => handlePushToPlatform(activeShopifyConnection, 'Shopify', publishAsDraft)}
+                <PlatformPushButton
+                  platform="shopify"
+                  label="Shopify"
+                  pushing={pushingPlatform === 'shopify'}
                   disabled={pushingPlatform !== null}
-                  accessibilityRole="button"
-                  accessibilityLabel="Push product to Shopify"
-                >
-                  {pushingPlatform === 'shopify' ? (
-                    <View style={styles.pushButtonContent}>
-                      <Text style={styles.pushButtonText}>Pushing...</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.pushButtonContent}>
-                      <Ionicons name="cloud-upload-outline" size={20} color="#FFFFFF" />
-                      <Text style={styles.pushButtonText}>Push to Shopify</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
+                  onPress={() => handlePushToPlatform(activeShopifyConnection, 'Shopify', publishAsDraft)}
+                />
               </>
             ) : null}
 
             {/* Amazon */}
             {activeAmazonConnection ? (
-              <TouchableOpacity
-                style={[styles.pushButton, { backgroundColor: colors.primary }, pushingPlatform === 'amazon' && styles.pushButtonDisabled, styles.pushButtonSpaced]}
-                onPress={() => handlePushToPlatform(activeAmazonConnection, 'Amazon')}
-                disabled={pushingPlatform !== null}
-                accessibilityRole="button"
-                accessibilityLabel="Push product to Amazon"
-              >
-                {pushingPlatform === 'amazon' ? (
-                  <View style={styles.pushButtonContent}>
-                    <Text style={styles.pushButtonText}>Pushing...</Text>
-                  </View>
-                ) : (
-                  <View style={styles.pushButtonContent}>
-                    <Ionicons name="cloud-upload-outline" size={20} color="#FFFFFF" />
-                    <Text style={styles.pushButtonText}>Push to Amazon</Text>
-                  </View>
-                )}
-              </TouchableOpacity>
+              <View style={styles.pushButtonSpaced}>
+                <PlatformPushButton
+                  platform="amazon"
+                  label="Amazon"
+                  pushing={pushingPlatform === 'amazon'}
+                  disabled={pushingPlatform !== null}
+                  onPress={() => handlePushToPlatform(activeAmazonConnection, 'Amazon')}
+                />
+              </View>
+            ) : null}
+
+            {/* eBay */}
+            {activeEbayConnection ? (
+              <View style={styles.pushButtonSpaced}>
+                <PlatformPushButton
+                  platform="ebay"
+                  label="eBay"
+                  pushing={pushingPlatform === 'ebay'}
+                  disabled={pushingPlatform !== null}
+                  onPress={() => handlePushToPlatform(activeEbayConnection, 'eBay')}
+                />
+              </View>
             ) : null}
 
             {/* No connections */}
-            {!activeShopifyConnection && !activeAmazonConnection && (
+            {!activeShopifyConnection && !activeAmazonConnection && !activeEbayConnection && (
               <View style={[styles.noConnectionCard, { backgroundColor: colors.primaryBackground, borderColor: colors.border }]}>
                 <Ionicons name="storefront-outline" size={24} color={colors.textSecondary} />
                 <Text style={[styles.noConnectionText, { color: colors.textSecondary }]}>
@@ -298,6 +410,75 @@ export default function ResultsScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Save Template Modal */}
+      <Modal visible={showSaveTemplate} transparent animationType="fade" onRequestClose={() => setShowSaveTemplate(false)}>
+        <View style={styles.tmplOverlay}>
+          <View style={[styles.tmplModal, { backgroundColor: colors.background }]}>
+            <Text style={[styles.tmplTitle, { color: colors.text }]}>Save Template</Text>
+            <Text style={[styles.tmplDesc, { color: colors.textSecondary }]}>
+              Saves brand, category, currency, gender, and other reusable fields.
+            </Text>
+            <TextInput
+              style={[styles.tmplInput, { borderColor: colors.border, color: colors.text, backgroundColor: colors.backgroundSecondary }]}
+              placeholder="Template name"
+              placeholderTextColor={colors.textTertiary}
+              value={templateName}
+              onChangeText={setTemplateName}
+              autoFocus
+            />
+            <View style={styles.tmplBtnRow}>
+              <TouchableOpacity onPress={() => { setShowSaveTemplate(false); setTemplateName(''); }} style={styles.tmplCancelBtn}>
+                <Text style={[styles.tmplCancelText, { color: colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveTemplate}
+                disabled={!templateName.trim()}
+                style={[styles.tmplSaveBtn, { backgroundColor: templateName.trim() ? colors.primary : colors.borderDark }]}
+              >
+                <Text style={styles.tmplSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Apply Template Modal */}
+      <Modal visible={showApplyTemplate} transparent animationType="fade" onRequestClose={() => setShowApplyTemplate(false)}>
+        <View style={styles.tmplOverlay}>
+          <View style={[styles.tmplModal, { backgroundColor: colors.background, maxHeight: '60%' }]}>
+            <Text style={[styles.tmplTitle, { color: colors.text }]}>Apply Template</Text>
+            <FlatList
+              data={templates}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <View style={[styles.tmplItem, { borderColor: colors.border }]}>
+                  <TouchableOpacity style={styles.tmplItemInfo} onPress={() => handleApplyTemplate(item)}>
+                    <Text style={[styles.tmplItemName, { color: colors.text }]}>{item.name}</Text>
+                    <Text style={[styles.tmplItemFields, { color: colors.textSecondary }]}>
+                      {Object.keys(item.fields).length} fields
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert('Delete Template', `Delete "${item.name}"?`, [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Delete', style: 'destructive', onPress: () => deleteTemplate(item.id) },
+                      ]);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+            <TouchableOpacity onPress={() => setShowApplyTemplate(false)} style={styles.tmplCancelBtn}>
+              <Text style={[styles.tmplCancelText, { color: colors.textSecondary }]}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -396,7 +577,7 @@ const styles = StyleSheet.create({
   },
   pushButtonSpaced: {
     marginTop: spacing.sm,
-  },
+  } as const,
   pushButtonText: {
     color: '#FFFFFF',
     fontSize: fontSize.md,
@@ -413,6 +594,108 @@ const styles = StyleSheet.create({
   noConnectionText: {
     flex: 1,
     fontSize: fontSize.sm,
+  },
+  templateSection: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+  },
+  templateButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  templateBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+  },
+  templateBtnText: {
+    fontSize: fontSize.sm,
+    fontWeight: fontWeight.medium,
+  },
+  tmplOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  tmplModal: {
+    width: '100%',
+    borderRadius: borderRadius.xl,
+    padding: spacing.xl,
+  },
+  tmplTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.semibold,
+    marginBottom: spacing.sm,
+  },
+  tmplDesc: {
+    fontSize: fontSize.sm,
+    marginBottom: spacing.md,
+  },
+  tmplInput: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    fontSize: fontSize.md,
+    marginBottom: spacing.md,
+  },
+  tmplBtnRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+  },
+  tmplCancelBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  tmplCancelText: {
+    fontSize: fontSize.md,
+    textAlign: 'center',
+  },
+  tmplSaveBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+  },
+  tmplSaveText: {
+    color: '#FFFFFF',
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.semibold,
+  },
+  tmplItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+  },
+  tmplItemInfo: {
+    flex: 1,
+  },
+  tmplItemName: {
+    fontSize: fontSize.md,
+    fontWeight: fontWeight.medium,
+  },
+  tmplItemFields: {
+    fontSize: fontSize.xs,
+  },
+  partialErrorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+  },
+  partialErrorText: {
+    fontSize: fontSize.sm,
+    flex: 1,
   },
   bottomSpacer: {
     height: spacing.xxxl,

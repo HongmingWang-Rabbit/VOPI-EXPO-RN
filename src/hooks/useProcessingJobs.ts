@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { vopiService } from '../services/vopi.service';
 
 const POLL_INTERVAL = 10000; // 10 seconds
+/** Fetch enough jobs to cover all potentially in-progress items */
+const PROCESSING_JOBS_FETCH_LIMIT = 50;
 
 const PROCESSING_STATUSES = [
   'pending',
@@ -22,7 +24,7 @@ export function useProcessingJobs() {
 
     const fetchCount = async () => {
       try {
-        const { jobs } = await vopiService.listJobs({ limit: 50 });
+        const { jobs } = await vopiService.listJobs({ limit: PROCESSING_JOBS_FETCH_LIMIT });
         if (isMountedRef.current) {
           setCount(jobs.filter((j) => PROCESSING_STATUSES.includes(j.status)).length);
         }

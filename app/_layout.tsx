@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
@@ -10,6 +11,11 @@ import { ToastProvider } from '../src/contexts/ToastContext';
 import { apiClient } from '../src/services/api.client';
 import { WebContainer } from '../src/components/ui/WebContainer';
 import { ErrorBoundary } from '../src/components/ui/ErrorBoundary';
+import { initSentry } from '../src/services/sentry';
+import { requestNotificationPermissions } from '../src/services/notifications';
+
+// Initialize Sentry for error tracking
+initSentry();
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -35,12 +41,11 @@ function RootLayoutNav() {
     apiClient.setTokenGetter(getAccessToken);
   }, [getAccessToken]);
 
-  // Hide splash screen when auth is loaded
+  // Hide splash screen when auth is loaded and request notification permissions
   useEffect(() => {
     if (!isLoading) {
-      SplashScreen.hideAsync().catch(() => {
-        // Ignore errors - splash screen may not be available
-      });
+      SplashScreen.hideAsync().catch(() => {});
+      requestNotificationPermissions().catch(() => {});
     }
   }, [isLoading]);
 
@@ -57,6 +62,8 @@ function RootLayoutNav() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="video-preview" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="results" options={{ presentation: 'modal' }} />
         <Stack.Screen name="privacy" options={{ headerShown: true, title: 'Privacy Policy' }} />
         <Stack.Screen name="terms-of-service" options={{ headerShown: true, title: 'Terms of Service' }} />
@@ -68,6 +75,9 @@ function RootLayoutNav() {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -77,16 +87,18 @@ const styles = StyleSheet.create({
 
 export default function RootLayout() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <ToastProvider>
-              <RootLayoutNav />
-            </ToastProvider>
-          </AuthProvider>
-        </QueryClientProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={styles.root}>
+      <ErrorBoundary>
+        <ThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <ToastProvider>
+                <RootLayoutNav />
+              </ToastProvider>
+            </AuthProvider>
+          </QueryClientProvider>
+        </ThemeProvider>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

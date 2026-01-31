@@ -1,4 +1,5 @@
 import { VOPIConfig } from '../config/vopi.config';
+import { validateEnv } from '../config/env';
 import { APIError, TimeoutError, NetworkError, createAPIError } from '../utils/errors';
 
 type GetAccessToken = () => Promise<string | null>;
@@ -10,6 +11,17 @@ interface RequestOptions {
 
 const DEFAULT_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
+const NETWORK_ERROR_PATTERNS = [
+  'network',
+  'failed to fetch',
+  'load failed',
+  'internet',
+  'offline',
+  'connection',
+  'econnrefused',
+  'enotfound',
+  'etimedout',
+];
 
 class APIClient {
   private getAccessToken: GetAccessToken | null = null;
@@ -67,6 +79,7 @@ class APIClient {
     options: RequestInit,
     requestOptions: RequestOptions = {}
   ): Promise<Response> {
+    validateEnv();
     const timeout = requestOptions.timeout ?? VOPIConfig.requestTimeout;
     const maxRetries = requestOptions.retries ?? DEFAULT_RETRIES;
 
@@ -76,9 +89,14 @@ class APIClient {
       try {
         const response = await this.fetchWithTimeout(url, options, timeout);
 
-        // Don't retry on client errors (4xx)
+        // Don't retry on client errors (4xx), except retriable ones
         if (response.status >= 400 && response.status < 500) {
-          return response;
+          const isRetriable = response.status === 408 || response.status === 429;
+          if (!isRetriable || attempt >= maxRetries) {
+            return response;
+          }
+          await this.delay(RETRY_DELAY_MS * Math.pow(2, attempt));
+          continue;
         }
 
         // Retry on server errors (5xx)
@@ -150,20 +168,8 @@ class APIClient {
     }
 
     // Check message patterns for network-related errors
-    const networkPatterns = [
-      'network',
-      'failed to fetch',
-      'load failed',
-      'internet',
-      'offline',
-      'connection',
-      'ECONNREFUSED',
-      'ENOTFOUND',
-      'ETIMEDOUT',
-    ];
-
     const lowerMessage = error.message.toLowerCase();
-    return networkPatterns.some((pattern) => lowerMessage.includes(pattern.toLowerCase()));
+    return NETWORK_ERROR_PATTERNS.some((pattern) => lowerMessage.includes(pattern));
   }
 
   private async handleResponse<T>(response: Response): Promise<T> {
@@ -186,7 +192,7 @@ class APIClient {
 
     // 204 No Content has no body
     if (response.status === 204) {
-      return undefined as T;
+      return undefined!;
     }
 
     return response.json();
